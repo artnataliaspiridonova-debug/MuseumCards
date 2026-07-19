@@ -84,9 +84,10 @@ h2 { font-size: 35px; line-height: 1.05; }
 .orbit-one { transform: rotate(34deg) scaleY(.38); }
 .orbit-two { transform: rotate(-34deg) scaleY(.38); }
 .hero-star { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; color: var(--paper); background: var(--navy); font-size: 24px; box-shadow: 0 0 0 7px var(--paper), 0 0 0 8px var(--navy); }
-.round-ribbon { display: flex; align-items: center; margin: 28px 0 30px; }
-.round-ribbon span { width: 39px; height: 39px; display: grid; place-items: center; color: white; border: 3px solid var(--paper); border-radius: 50%; margin-left: -6px; font-family: Georgia, serif; font-weight: 900; }
-.round-ribbon span:first-child { margin-left: 0; }
+.round-ribbon { width: 100%; display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin: 24px 0 28px; }
+.round-ribbon span { min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 7px; color: var(--label-color); }
+.round-ribbon i { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; color: white; font-family: Georgia, serif; font-size: 15px; font-style: normal; font-weight: 900; }
+.round-ribbon small { font-size: 8px; font-weight: 800; line-height: 1.15; }
 .welcome-actions { width: 100%; margin-top: auto; }
 
 .primary-button, .secondary-button, .share-button {
@@ -112,6 +113,10 @@ h2 { font-size: 35px; line-height: 1.05; }
 .mode-card small { margin-top: 4px; color: var(--muted); font-size: 10px; }
 .check { width: 20px; height: 20px; position: absolute; top: 13px; right: 13px; display: none; place-items: center; border-radius: 50%; color: white; background: var(--navy); font-size: 11px; }
 .mode-card.selected .check { display: grid; }
+.mode-explainer { margin: 15px 0 22px; padding: 15px 17px; border-left: 3px solid var(--navy); border-radius: 0 13px 13px 0; background: rgba(23, 63, 103, .06); text-align: left; }
+.mode-explainer strong { font-family: Georgia, serif; font-size: 15px; }
+.mode-explainer ol { margin: 9px 0 0; padding-left: 18px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.mode-explainer li + li { margin-top: 3px; }
 .bottom-button { margin-top: auto; }
 .back-button { align-self: flex-start; border: 0; background: transparent; padding: 0; margin-bottom: 24px; color: var(--muted); cursor: pointer; font-size: 12px; }
 .duration-stack { display: grid; gap: 12px; margin-top: 28px; }
@@ -144,6 +149,7 @@ h2 { font-size: 35px; line-height: 1.05; }
 .card-deck button span { font-family: Georgia, serif; font-size: 20px; }
 .card-deck button small { position: absolute; bottom: 8px; left: 0; right: 0; font-size: 8px; font-weight: 800; }
 .deck-hint { font-family: var(--font-geist-sans), Arial, sans-serif !important; font-size: 10px !important; }
+.deck-screen > .scenario-cue { padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--round-color) 24%, transparent); border-radius: 13px; color: var(--round-color); background: var(--round-soft); font-family: var(--font-geist-sans), Arial, sans-serif; font-size: 10px; }
 
 .mission-card { position: relative; overflow: hidden; border: 1px solid var(--round-color); border-radius: 23px; padding: 24px 23px 21px; background: var(--round-soft); box-shadow: 0 14px 34px rgba(33,44,52,.1); }
 .mission-card::after { content: ""; position: absolute; inset: 8px; border: 1px solid var(--round-color); border-radius: 17px; opacity: .28; pointer-events: none; }
@@ -221,4 +227,3 @@ h2 { font-size: 35px; line-height: 1.05; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
-
