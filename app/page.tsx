@@ -23,6 +23,7 @@ type SavedAdventure = {
   duration: Duration;
   museumName: string;
   selectedRounds: RoundId[];
+  deckOrders?: Partial<Record<RoundId, string[]>>;
   currentRoundIndex: number;
   memories: Memory[];
   startedAt: number;
@@ -30,46 +31,59 @@ type SavedAdventure = {
 
 const STORAGE_KEY = "museum-adventure-v1";
 
+function shuffleCards(cards: AdventureCard[]) {
+  const shuffled = [...cards];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
+  }
+  return shuffled.map((item) => item.id);
+}
+
+function createDeckOrders(): Record<RoundId, string[]> {
+  return Object.fromEntries(rounds.map((round) => [round.id, shuffleCards(round.cards)])) as Record<RoundId, string[]>;
+}
+
 const ui = {
   ru: {
-    tagline: "Твоё искусство смотреть внимательнее",
-    intro: "Пять маленьких заданий превращают любой художественный музей в личное приключение.",
-    start: "Начать приключение",
+    gameName: "Museum Adventure",
+    tagline: "Превратите посещение музея в путешествие",
+    intro: "Играйте самостоятельно, вдвоём, всей семьёй или компанией. Выполняйте задания, замечайте детали и открывайте искусство заново в любом художественном музее.",
+    start: "Начать игру",
     resume: "Продолжить маршрут",
-    private: "Без регистрации. Фото и мысли остаются на этом телефоне.",
-    who: "Кто сегодня играет?",
+    private: "Без регистрации. Фото и заметки останутся только на этом телефоне.",
+    who: "С кем вы сегодня в музее?",
     time: "Сколько у вас времени?",
     museum: "Название музея",
     optional: "необязательно",
-    next: "Дальше",
-    begin: "Войти в музей",
-    draw: "Выбери закрытую карту",
+    next: "Продолжить",
+    begin: "Начать маршрут",
+    draw: "Вытяните карту",
     of: "из",
-    tinyMission: "Маленькая миссия",
-    memory: "Сохранить момент",
-    memoryHint: "Это необязательно — можно просто продолжить игру.",
+    tinyMission: "Подсказка",
+    memory: "Сохранить впечатление",
+    memoryHint: "Этот шаг необязателен. Его можно пропустить и продолжить игру.",
     addPhoto: "Добавить фото",
     changePhoto: "Заменить фото",
-    notePlaceholder: "Запиши мысль, название или неожиданное открытие…",
-    another: "Выбрать другую карту",
-    done: "Готово, следующий раунд",
+    notePlaceholder: "Запишите мысль, название или неожиданное открытие",
+    another: "Вытянуть другую карту",
+    done: "Готово. Следующий этап",
     finish: "Завершить приключение",
-    completed: "Приключение завершено",
-    explored: "произведений исследовано",
-    memoriesSaved: "воспоминаний сохранено",
-    passport: "Твой Museum Passport",
-    savePassport: "Сохранить Museum Passport",
+    completed: "Маршрут пройден",
+    passport: "Ваше музейное приключение",
+    savePassport: "Сохранить музейный маршрут",
     share: "Поделиться приключением",
     again: "Начать новый маршрут",
-    noNote: "Момент сохранён без заметки",
-    quickLabel: "Быстрое",
-    quickMeta: "3 раунда · 15–20 минут",
-    fullLabel: "Полное",
-    fullMeta: "5 раундов · 35–60 минут",
+    noNote: "Без заметки",
+    quickLabel: "Короткий маршрут",
+    quickMeta: "3 этапа · 15–20 минут",
+    fullLabel: "Полный маршрут",
+    fullMeta: "5 этапов · 35–60 минут",
     addHome: "Добавить на главный экран",
-    homeHint: "Открывай игру как обычное приложение во время следующих посещений.",
+    homeHint: "Добавьте игру на главный экран и открывайте её как обычное приложение во время следующих посещений музея.",
   },
   en: {
+    gameName: "Museum Adventure",
     tagline: "A new way to look at art",
     intro: "Five small missions turn any art museum into a personal adventure.",
     start: "Start an adventure",
@@ -115,22 +129,68 @@ const modeOptions: Array<{
   label: { ru: string; en: string };
   text: { ru: string; en: string };
 }> = [
-  { id: "solo", icon: "◯", label: { ru: "Solo", en: "Solo" }, text: { ru: "Личное путешествие", en: "A personal journey" } },
-  { id: "together", icon: "◯◯", label: { ru: "Вместе", en: "Together" }, text: { ru: "Для пары или друзей", en: "For a pair or friends" } },
-  { id: "family", icon: "⌂", label: { ru: "Семья", en: "Family" }, text: { ru: "Понятно детям", en: "Child-friendly prompts" } },
-  { id: "group", icon: "✦", label: { ru: "Группа", en: "Group" }, text: { ru: "Один телефон на всех", en: "One phone for everyone" } },
+  { id: "solo", icon: "◯", label: { ru: "Соло", en: "Solo" }, text: { ru: "Следуйте своим ассоциациям и интуиции", en: "Follow your own associations" } },
+  { id: "together", icon: "◯◯", label: { ru: "Вместе", en: "Together" }, text: { ru: "Отвечайте отдельно, решайте вместе", en: "Answer alone, decide together" } },
+  { id: "family", icon: "⌂", label: { ru: "Семья", en: "Family" }, text: { ru: "Ребёнок ведёт, взрослые помогают", en: "The child leads, adults support" } },
+  { id: "group", icon: "✦", label: { ru: "Группа", en: "Group" }, text: { ru: "Команды, ведущий и голосование", en: "Teams, a host and a vote" } },
 ];
 
 const modeCue: Record<PlayerMode, { ru: string; en: string }> = {
-  solo: { ru: "Ответь себе — здесь нет правильного варианта.", en: "Answer for yourself—there is no correct response." },
-  together: { ru: "Сначала ответьте отдельно, затем сравните, что увидели по-разному.", en: "Answer separately, then compare what you saw differently." },
-  family: { ru: "Пусть первым ответит самый младший участник. Любой ответ подходит.", en: "Let the youngest explorer answer first. Every answer works." },
-  group: { ru: "Каждый предлагает ответ, затем группа выбирает самый неожиданный.", en: "Everyone suggests an answer, then choose the most surprising one." },
+  solo: { ru: "Не спешите. Сформулируйте свой ответ и обратите внимание на то, что привлекло именно вас.", en: "Take your time. Form your own response and notice what drew your attention." },
+  together: { ru: "Сначала каждый обдумывает свой ответ молча. Затем участники делятся ответами по очереди, находят одно совпадение и одно различие и формулируют общий ответ.", en: "First, everyone answers silently. Then take turns sharing: find one similarity and one difference. Finish with a shared response." },
+  family: { ru: "Ребёнок отвечает первым. Взрослые помогают уточняющими вопросами и предлагают свои версии, не исправляя ответ ребёнка. В конце ребёнок выбирает понравившийся вариант или соединяет несколько идей в одну.", en: "The child answers first. One adult asks a follow-up question, the other adds a version. The child chooses or combines the family answers." },
+  group: { ru: "Разделитесь на команды по 2–3 человека. Каждая команда готовит один ответ, затем представляет его группе. Выберите общий ответ голосованием — за свой голосовать нельзя.", en: "Split into teams of 2–3. Each team prepares one answer and presents it. Vote for a shared answer—you cannot vote for your own." },
+};
+
+const modeDetails: Record<PlayerMode, { ru: { title: string; steps: string[] }; en: { title: string; steps: string[] } }> = {
+  solo: {
+    ru: { title: "Как проходит соло-игра", steps: ["Самостоятельно выбирайте произведения.", "Выполняйте задания в своём темпе.", "Сохраняйте наблюдения и открытия."] },
+    en: { title: "How Solo works", steps: ["Choose the artworks yourself.", "Respond at your own pace.", "Save your personal discoveries."] },
+  },
+  together: {
+    ru: { title: "Как проходит игра вместе", steps: ["На каждом этапе новый участник выбирает произведение.", "Сначала каждый даёт свой ответ, не подсказывая другим.", "Затем сравните ответы и сформулируйте один общий вариант."] },
+    en: { title: "How Together works", steps: ["A new player chooses the artwork at each stage.", "Everyone forms an answer without influencing the others.", "Compare your answers and create one shared response."] },
+  },
+  family: {
+    ru: { title: "Подходит для одного или нескольких взрослых и детей", steps: ["Ребёнок вытягивает карту, выбирает произведение и отвечает первым.", "Взрослые помогают уточняющими вопросами и предлагают свои версии, не исправляя ответ ребёнка.", "Ребёнок выбирает понравившийся вариант или соединяет несколько идей в одну."] },
+    en: { title: "Scenario: two adults and a child", steps: ["The child draws a card, chooses the artwork and answers first.", "One adult helps with a question; the other offers a version without correcting the child.", "The child chooses the best answer or combines all versions."] },
+  },
+  group: {
+    ru: { title: "Сценарий: группа от четырёх человек", steps: ["На каждом этапе новый ведущий читает задание и выбирает произведение.", "Остальные делятся на команды по 2–3 человека и готовят по одному ответу.", "Команды представляют ответы, а все участники голосуют за наиболее интересный ответ. За свой вариант голосовать нельзя."] },
+    en: { title: "Scenario: a group of four or more", steps: ["A new host reads the task and chooses the artwork at each stage.", "Everyone else splits into teams of 2–3 and prepares one answer per team.", "Teams present; the group votes. No voting for your own answer."] },
+  },
+};
+
+const summaryRoundLabels: Record<RoundId, { ru: string; en: string }> = {
+  find: { ru: "Поиск", en: "Find" },
+  observe: { ru: "Наблюдение", en: "Observe" },
+  imagine: { ru: "Воображение", en: "Imagine" },
+  create: { ru: "Творчество", en: "Create" },
+  challenge: { ru: "Испытание", en: "Challenge" },
 };
 
 function randomDifferentCard(roundId: RoundId, current?: string) {
   const cards = getRound(roundId).cards.filter((item) => item.id !== current);
   return cards[Math.floor(Math.random() * cards.length)];
+}
+
+function russianCount(count: number, one: string, few: string, many: string) {
+  const lastTwo = count % 100;
+  const last = count % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return many;
+  if (last === 1) return one;
+  if (last >= 2 && last <= 4) return few;
+  return many;
+}
+
+function completedTasksLabel(count: number, language: Language) {
+  if (language === "en") return count === 1 ? "mission completed" : "missions completed";
+  return russianCount(count, "задание выполнено", "задания выполнено", "заданий выполнено");
+}
+
+function savedImpressionsLabel(count: number, language: Language) {
+  if (language === "en") return count === 1 ? "memory saved" : "memories saved";
+  return russianCount(count, "впечатление сохранено", "впечатления сохранено", "впечатлений сохранено");
 }
 
 async function compressPhoto(file: File): Promise<string> {
@@ -189,6 +249,7 @@ export default function Home() {
   const [duration, setDuration] = useState<Duration>("full");
   const [museumName, setMuseumName] = useState("");
   const [selectedRounds, setSelectedRounds] = useState<RoundId[]>(rounds.map((round) => round.id));
+  const [deckOrders, setDeckOrders] = useState<Record<RoundId, string[]>>(createDeckOrders);
   const [currentRoundIndex, setCurrentRoundIndex] = useState(0);
   const [selectedCard, setSelectedCard] = useState<AdventureCard | null>(null);
   const [note, setNote] = useState("");
@@ -203,6 +264,9 @@ export default function Home() {
 
   const currentRoundId = selectedRounds[currentRoundIndex] ?? "find";
   const currentRound = getRound(currentRoundId);
+  const currentDeck = (deckOrders[currentRoundId] ?? currentRound.cards.map((cardItem) => cardItem.id))
+    .map((id) => currentRound.cards.find((cardItem) => cardItem.id === id))
+    .filter((cardItem): cardItem is AdventureCard => Boolean(cardItem));
 
   useEffect(() => {
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
@@ -229,6 +293,7 @@ export default function Home() {
       duration,
       museumName,
       selectedRounds,
+      deckOrders,
       currentRoundIndex,
       memories,
       startedAt,
@@ -238,7 +303,7 @@ export default function Home() {
     } catch {
       // The adventure remains usable even when the browser storage quota is full.
     }
-  }, [phase, language, playerMode, duration, museumName, selectedRounds, currentRoundIndex, memories, startedAt]);
+  }, [phase, language, playerMode, duration, museumName, selectedRounds, deckOrders, currentRoundIndex, memories, startedAt]);
 
   const savedMemoryCount = useMemo(
     () => memories.filter((memory) => memory.note.trim() || memory.photo).length,
@@ -247,6 +312,7 @@ export default function Home() {
 
   function startAdventure() {
     setSelectedRounds(duration === "quick" ? ["find", "imagine", "challenge"] : rounds.map((round) => round.id));
+    setDeckOrders(createDeckOrders());
     setCurrentRoundIndex(0);
     setMemories([]);
     setSelectedCard(null);
@@ -263,6 +329,9 @@ export default function Home() {
     setDuration(savedDraft.duration);
     setMuseumName(savedDraft.museumName);
     setSelectedRounds(savedDraft.selectedRounds);
+    setDeckOrders(savedDraft.deckOrders
+      ? { ...createDeckOrders(), ...savedDraft.deckOrders }
+      : createDeckOrders());
     setCurrentRoundIndex(savedDraft.currentRoundIndex);
     setMemories(savedDraft.memories);
     setStartedAt(savedDraft.startedAt);
@@ -271,7 +340,7 @@ export default function Home() {
   }
 
   function chooseCard(cardIndex: number) {
-    setSelectedCard(currentRound.cards[cardIndex]);
+    setSelectedCard(currentDeck[cardIndex]);
     setNote("");
     setPhoto(undefined);
     setMemoryOpen(false);
@@ -326,6 +395,7 @@ export default function Home() {
         duration,
         museumName,
         selectedRounds,
+        deckOrders,
         currentRoundIndex,
         memories,
         startedAt,
@@ -348,8 +418,8 @@ export default function Home() {
     context.textAlign = "center";
     context.font = "700 38px Arial";
     context.fillText("MUSEUM ADVENTURE", 540, 115);
-    context.font = "800 78px Arial";
-    context.fillText("MUSEUM PASSPORT", 540, 205);
+    context.font = language === "ru" ? "800 58px Arial" : "800 78px Arial";
+    context.fillText(language === "ru" ? "МУЗЕЙНОЕ ПРИКЛЮЧЕНИЕ" : "MUSEUM PASSPORT", 540, 205);
     context.font = "32px Arial";
     context.fillStyle = "#2f3b45";
     const subtitle = museumName || (language === "ru" ? "Мой музейный маршрут" : "My museum route");
@@ -370,7 +440,7 @@ export default function Home() {
       context.textAlign = "left";
       context.fillStyle = round.color;
       context.font = "700 25px Arial";
-      context.fillText(`${round.icon}  ${round.label[language].toUpperCase()}`, 125, y + 43);
+      context.fillText(`${round.icon}  ${summaryRoundLabels[round.id][language].toUpperCase()}`, 125, y + 43);
       const textWidth = memory.photo ? 610 : 805;
       context.fillStyle = "#172633";
       context.font = "700 33px Arial";
@@ -422,8 +492,8 @@ export default function Home() {
       const blob = await createPassportBlob();
       const file = new File([blob], "museum-adventure-passport.png", { type: "image/png" });
       const text = language === "ru"
-        ? `Я прошёл музейное приключение: ${memories.length} произведений и ${savedMemoryCount} сохранённых воспоминаний.`
-        : `I completed a Museum Adventure: ${memories.length} artworks and ${savedMemoryCount} saved memories.`;
+        ? `Моё музейное приключение завершено: ${memories.length} ${completedTasksLabel(memories.length, "ru")} и ${savedMemoryCount} ${savedImpressionsLabel(savedMemoryCount, "ru")}.`
+        : `I completed a Museum Adventure: ${memories.length} ${completedTasksLabel(memories.length, "en")} and ${savedMemoryCount} ${savedImpressionsLabel(savedMemoryCount, "en")}.`;
       if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
         await navigator.share({ title: "Museum Adventure", text, files: [file] });
       } else {
@@ -459,12 +529,12 @@ export default function Home() {
               <span className="orbit orbit-two" />
               <span className="hero-star">✦</span>
             </div>
-            <p className="eyebrow">Museum Adventure Cards</p>
+            <p className="eyebrow">{t.gameName} · {language === "ru" ? "игра для музея" : "a game for art museums"}</p>
             <h1>{t.tagline}</h1>
             <p className="lead">{t.intro}</p>
-            <div className="round-ribbon" aria-label="Five rounds">
+            <div className="round-ribbon" aria-label={language === "ru" ? "Пять категорий игры" : "Five game categories"}>
               {rounds.map((round) => (
-                <span key={round.id} style={{ backgroundColor: round.color }} title={round.label[language]}>{round.icon}</span>
+                <span key={round.id} style={{ "--label-color": round.color } as React.CSSProperties}><i style={{ backgroundColor: round.color }}>{round.icon}</i><small>{round.label[language]}</small></span>
               ))}
             </div>
             <div className="welcome-actions">
@@ -480,7 +550,7 @@ export default function Home() {
             <div className="step-indicator"><span className="active" /><span className={setupStep === 2 ? "active" : ""} /></div>
             {setupStep === 1 ? (
               <>
-                <p className="eyebrow">01 · {language === "ru" ? "Команда" : "Your company"}</p>
+                <p className="eyebrow">01 · {language === "ru" ? "Участники" : "Your company"}</p>
                 <h2>{t.who}</h2>
                 <div className="option-grid">
                   {modeOptions.map((option) => (
@@ -492,6 +562,10 @@ export default function Home() {
                     </button>
                   ))}
                 </div>
+                <section className="mode-explainer">
+                  <strong>{modeDetails[playerMode][language].title}</strong>
+                  <ol>{modeDetails[playerMode][language].steps.map((step) => <li key={step}>{step}</li>)}</ol>
+                </section>
                 <button className="primary-button bottom-button" onClick={() => setSetupStep(2)}>{t.next}<span>→</span></button>
               </>
             ) : (
@@ -520,7 +594,7 @@ export default function Home() {
         {phase === "game" && (
           <div className="screen game-screen" style={{ "--round-color": currentRound.color, "--round-soft": currentRound.soft } as React.CSSProperties}>
             <div className="game-progress">
-              <span>{language === "ru" ? "Раунд" : "Round"} {currentRoundIndex + 1} {t.of} {selectedRounds.length}</span>
+              <span>{language === "ru" ? "Этап" : "Round"} {currentRoundIndex + 1} {t.of} {selectedRounds.length}</span>
               <div>{selectedRounds.map((id, index) => <i key={id} className={index <= currentRoundIndex ? "active" : ""} style={{ backgroundColor: index <= currentRoundIndex ? getRound(id).color : undefined }} />)}</div>
             </div>
 
@@ -529,14 +603,29 @@ export default function Home() {
                 <div className="round-heading"><span>{currentRound.icon}</span><p>{currentRound.label[language]}</p></div>
                 <h2>{t.draw}</h2>
                 <p>{currentRound.instruction[language]}</p>
+                {playerMode === "together" && (
+                  <p className="scenario-cue">{language === "ru"
+                    ? `Ведущий этапа: ${currentRoundIndex === 0 ? "выберите первого участника" : "передайте роль следующему участнику"}. Он выбирает произведение, у которого вы будете выполнять задание.`
+                    : `Stage leader: ${currentRoundIndex === 0 ? "choose the first player" : "pass the role to the next player"}. They choose the artwork for this task.`}</p>
+                )}
+                {playerMode === "family" && (
+                  <p className="scenario-cue">{language === "ru"
+                    ? "Главный исследователь — ребёнок: он вытягивает карту и выбирает произведение. Взрослые пока не подсказывают."
+                    : "The child is the lead explorer: they draw the card and choose the artwork. Adults do not give hints yet."}</p>
+                )}
+                {playerMode === "group" && (
+                  <p className="scenario-cue">{language === "ru"
+                    ? `Ведущий этапа: ${currentRoundIndex === 0 ? "выберите первого участника" : "передайте телефон следующему"}. Остальные делятся на команды по 2–3 человека.`
+                    : `Stage host: ${currentRoundIndex === 0 ? "choose the first player" : "pass the phone to the next player"}. Everyone else splits into teams of 2–3.`}</p>
+                )}
                 <div className="card-deck" aria-label={t.draw}>
-                  {currentRound.cards.map((cardItem, index) => (
+                  {currentDeck.map((cardItem, index) => (
                     <button key={cardItem.id} onClick={() => chooseCard(index)} aria-label={`${t.draw} ${index + 1}`}>
                       <span>{currentRound.icon}</span><small>{String(index + 1).padStart(2, "0")}</small>
                     </button>
                   ))}
                 </div>
-                <p className="deck-hint">{language === "ru" ? "Доверься случайности — все карты подходят для любого художественного музея." : "Trust chance—every card works in any art museum."}</p>
+                <p className="deck-hint">{language === "ru" ? "Доверьтесь случаю: все задания подходят для любого художественного музея." : "Trust chance—every card works in any art museum."}</p>
               </div>
             ) : (
               <div className="mission-screen">
@@ -554,7 +643,7 @@ export default function Home() {
                   <div className="memory-panel">
                     <input ref={fileInput} className="file-input" type="file" accept="image/*" capture="environment" onChange={handlePhoto} />
                     {photo ? (
-                      <button className="photo-preview" onClick={() => fileInput.current?.click()}><img src={photo} alt="Museum memory" /><span>{t.changePhoto}</span></button>
+                      <button className="photo-preview" onClick={() => fileInput.current?.click()}><img src={photo} alt={language === "ru" ? "Сохранённое впечатление из музея" : "Museum memory"} /><span>{t.changePhoto}</span></button>
                     ) : (
                       <button className="photo-button" onClick={() => fileInput.current?.click()}><span>▣</span>{t.addPhoto}</button>
                     )}
@@ -577,7 +666,7 @@ export default function Home() {
             <p className="eyebrow">Museum Adventure</p>
             <h1>{t.completed}</h1>
             {museumName && <p className="museum-title">{museumName}</p>}
-            <div className="summary-stats"><span><strong>{memories.length}</strong>{t.explored}</span><i /><span><strong>{savedMemoryCount}</strong>{t.memoriesSaved}</span></div>
+            <div className="summary-stats"><span><strong>{memories.length}</strong>{completedTasksLabel(memories.length, language)}</span><i /><span><strong>{savedMemoryCount}</strong>{savedImpressionsLabel(savedMemoryCount, language)}</span></div>
             <section className="passport-preview">
               <div className="passport-header"><span>{t.passport}</span><small>{new Date(startedAt).toLocaleDateString(language === "ru" ? "ru-RU" : "en-US", { day: "numeric", month: "long" })}</small></div>
               <div className="passport-route">
@@ -588,8 +677,8 @@ export default function Home() {
                     <article key={memory.roundId}>
                       <div className="route-marker" style={{ backgroundColor: round.color }}>{round.icon}</div>
                       {index < memories.length - 1 && <span className="route-line" />}
-                      <div className="route-copy"><small style={{ color: round.color }}>{round.label[language]}</small><strong>{savedCard.prompt[language]}</strong><p>{memory.note || t.noNote}</p></div>
-                      {memory.photo && <img src={memory.photo} alt="Saved museum moment" />}
+                      <div className="route-copy"><small style={{ color: round.color }}>{summaryRoundLabels[round.id][language]}</small><strong>{savedCard.prompt[language]}</strong><p>{memory.note || t.noNote}</p></div>
+                      {memory.photo && <img src={memory.photo} alt={language === "ru" ? "Сохранённое впечатление из музея" : "Saved museum moment"} />}
                     </article>
                   );
                 })}
