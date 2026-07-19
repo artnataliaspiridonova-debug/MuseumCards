@@ -1,4 +1,4 @@
-const CACHE = "museum-adventure-v1";
+const CACHE = "museum-adventure-v2";
 const SHELL = ["/", "/manifest.webmanifest", "/favicon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -39,4 +39,3 @@ self.addEventListener("fetch", (event) => {
     })),
   );
 });
-
