@@ -1,4 +1,4 @@
-const CACHE = "museum-adventure-v5";
+const CACHE = "museum-adventure-v6";
 const SHELL = ["/", "/manifest.webmanifest", "/favicon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 
 self.addEventListener("install", (event) => {
