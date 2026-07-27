@@ -5,9 +5,24 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { AdventureCard, Language, RoundId, getRound, rounds } from "./game-data";
 
-type Phase = "welcome" | "setup" | "game" | "summary";
+type Phase = "welcome" | "setup" | "game" | "summary" | "leaderboard";
 type PlayerMode = "solo" | "together" | "family" | "group";
 type Duration = "quick" | "full";
+type InstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+
+type City = { id: string; ru: string; en: string; country: string };
+type Museum = { id: string; cityId: string; ru: string; en: string };
+type LeaderboardEntry = { playerId: string; nickname: string; points: number; routes: number; rank: number };
+type RankingResult = {
+  pointsEarned: number;
+  totalPoints: number;
+  cityRank: number | null;
+  museumRank: number | null;
+  bonuses: { completion: number; newMuseum: number; newCity: number };
+};
 
 type Memory = {
   roundId: RoundId;
@@ -17,11 +32,15 @@ type Memory = {
 };
 
 type SavedAdventure = {
-  phase: Phase;
+  phase: "game" | "summary";
   language: Language;
   playerMode: PlayerMode;
   duration: Duration;
   museumName: string;
+  nickname?: string;
+  cityId?: string;
+  museumId?: string;
+  rankingResult?: RankingResult | null;
   selectedRounds: RoundId[];
   deckOrders?: Partial<Record<RoundId, string[]>>;
   currentRoundIndex: number;
@@ -30,6 +49,8 @@ type SavedAdventure = {
 };
 
 const STORAGE_KEY = "museum-adventure-v1";
+const PLAYER_ID_KEY = "museum-adventure-player-id";
+const PLAYER_NAME_KEY = "museum-adventure-player-name";
 
 function shuffleCards(cards: AdventureCard[]) {
   const shuffled = [...cards];
@@ -248,6 +269,22 @@ export default function Home() {
   const [playerMode, setPlayerMode] = useState<PlayerMode>("solo");
   const [duration, setDuration] = useState<Duration>("full");
   const [museumName, setMuseumName] = useState("");
+  const [nickname, setNickname] = useState("");
+  const [playerId, setPlayerId] = useState("");
+  const [cities, setCities] = useState<City[]>([]);
+  const [museums, setMuseums] = useState<Museum[]>([]);
+  const [cityId, setCityId] = useState("");
+  const [museumId, setMuseumId] = useState("");
+  const [locationsStatus, setLocationsStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [rankingResult, setRankingResult] = useState<RankingResult | null>(null);
+  const [resultStatus, setResultStatus] = useState<"idle" | "sending" | "saved" | "local" | "duplicate">("idle");
+  const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
+  const [leaderboardStatus, setLeaderboardStatus] = useState<"idle" | "loading" | "ready" | "empty" | "unavailable">("idle");
+  const [rankingPeriod, setRankingPeriod] = useState<"month" | "all">("month");
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+  const [installHelpOpen, setInstallHelpOpen] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
   const [selectedRounds, setSelectedRounds] = useState<RoundId[]>(rounds.map((round) => round.id));
   const [deckOrders, setDeckOrders] = useState<Record<RoundId, string[]>>(createDeckOrders);
   const [currentRoundIndex, setCurrentRoundIndex] = useState(0);
@@ -260,6 +297,7 @@ export default function Home() {
   const [savedDraft, setSavedDraft] = useState<SavedAdventure | null>(null);
   const [isCreatingPassport, setIsCreatingPassport] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const submittedRoute = useRef(0);
   const t = ui[language];
 
   const currentRoundId = selectedRounds[currentRoundIndex] ?? "find";
@@ -267,9 +305,21 @@ export default function Home() {
   const currentDeck = (deckOrders[currentRoundId] ?? currentRound.cards.map((cardItem) => cardItem.id))
     .map((id) => currentRound.cards.find((cardItem) => cardItem.id === id))
     .filter((cardItem): cardItem is AdventureCard => Boolean(cardItem));
+  const filteredMuseums = museums.filter((museum) => museum.cityId === cityId);
+  const localPoints = duration === "quick" ? 35 : 65;
+  const awardedPoints = rankingResult?.pointsEarned ?? localPoints;
+  const prizeTitle = duration === "quick"
+    ? (language === "ru" ? "Искатель деталей" : "Detail Seeker")
+    : (language === "ru" ? "Музейный исследователь" : "Museum Explorer");
 
   useEffect(() => {
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    const standalone = window.matchMedia("(display-mode: standalone)").matches ||
+      Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const existingPlayerId = localStorage.getItem(PLAYER_ID_KEY) || crypto.randomUUID();
+    if (!localStorage.getItem(PLAYER_ID_KEY)) localStorage.setItem(PLAYER_ID_KEY, existingPlayerId);
+    const existingName = localStorage.getItem(PLAYER_NAME_KEY) || "";
     const saved = localStorage.getItem(STORAGE_KEY);
     let parsedDraft: SavedAdventure | null = null;
     if (saved) {
@@ -280,8 +330,43 @@ export default function Home() {
         localStorage.removeItem(STORAGE_KEY);
       }
     }
-    const timer = window.setTimeout(() => setSavedDraft(parsedDraft), 0);
-    return () => window.clearTimeout(timer);
+    const timer = window.setTimeout(() => {
+      setSavedDraft(parsedDraft);
+      setIsStandalone(standalone);
+      setIsIOS(ios);
+      setPlayerId(existingPlayerId);
+      setNickname(existingName);
+    }, 0);
+
+    const captureInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as InstallPromptEvent);
+    };
+    const markInstalled = () => {
+      setIsStandalone(true);
+      setInstallPrompt(null);
+      setInstallHelpOpen(false);
+    };
+    window.addEventListener("beforeinstallprompt", captureInstallPrompt);
+    window.addEventListener("appinstalled", markInstalled);
+
+    fetch("/api/locations")
+      .then((response) => {
+        if (!response.ok) throw new Error("locations unavailable");
+        return response.json();
+      })
+      .then((data: { cities?: City[]; museums?: Museum[] }) => {
+        setCities(data.cities || []);
+        setMuseums(data.museums || []);
+        setLocationsStatus(data.cities?.length && data.museums?.length ? "ready" : "unavailable");
+      })
+      .catch(() => setLocationsStatus("unavailable"));
+
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("beforeinstallprompt", captureInstallPrompt);
+      window.removeEventListener("appinstalled", markInstalled);
+    };
   }, []);
 
   useEffect(() => {
@@ -292,6 +377,10 @@ export default function Home() {
       playerMode,
       duration,
       museumName,
+      nickname,
+      cityId,
+      museumId,
+      rankingResult,
       selectedRounds,
       deckOrders,
       currentRoundIndex,
@@ -303,7 +392,70 @@ export default function Home() {
     } catch {
       // The adventure remains usable even when the browser storage quota is full.
     }
-  }, [phase, language, playerMode, duration, museumName, selectedRounds, deckOrders, currentRoundIndex, memories, startedAt]);
+  }, [phase, language, playerMode, duration, museumName, nickname, cityId, museumId, rankingResult, selectedRounds, deckOrders, currentRoundIndex, memories, startedAt]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [phase, currentRoundIndex, selectedCard?.id]);
+
+  useEffect(() => {
+    if (phase !== "summary" || !startedAt || submittedRoute.current === startedAt) return;
+    submittedRoute.current = startedAt;
+
+    if (!playerId || nickname.trim().length < 2 || !cityId || !museumId) {
+      const timer = window.setTimeout(() => setResultStatus("local"), 0);
+      return () => window.clearTimeout(timer);
+    }
+
+    queueMicrotask(() => setResultStatus("sending"));
+    localStorage.setItem(PLAYER_NAME_KEY, nickname.trim());
+    fetch("/api/results", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        playerId,
+        nickname: nickname.trim(),
+        cityId,
+        museumId,
+        duration,
+        stages: selectedRounds.length,
+      }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (response.status === 409) {
+          setResultStatus("duplicate");
+          return;
+        }
+        if (!response.ok) throw new Error("result unavailable");
+        setRankingResult(data as RankingResult);
+        setResultStatus("saved");
+      })
+      .catch(() => setResultStatus("local"));
+  }, [phase, startedAt, playerId, nickname, cityId, museumId, duration, selectedRounds.length]);
+
+  useEffect(() => {
+    if (phase !== "leaderboard" || !cityId) return;
+    const controller = new AbortController();
+    queueMicrotask(() => setLeaderboardStatus("loading"));
+    const parameters = new URLSearchParams({ cityId, period: rankingPeriod });
+    if (museumId) parameters.set("museumId", museumId);
+    if (playerId) parameters.set("playerId", playerId);
+    fetch(`/api/leaderboard?${parameters}`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("leaderboard unavailable");
+        return response.json();
+      })
+      .then((data: { entries?: LeaderboardEntry[] }) => {
+        const entries = data.entries || [];
+        setLeaderboardEntries(entries);
+        setLeaderboardStatus(entries.length ? "ready" : "empty");
+      })
+      .catch((error) => {
+        if ((error as Error).name !== "AbortError") setLeaderboardStatus("unavailable");
+      });
+    return () => controller.abort();
+  }, [phase, cityId, museumId, rankingPeriod, playerId]);
 
   const savedMemoryCount = useMemo(
     () => memories.filter((memory) => memory.note.trim() || memory.photo).length,
@@ -318,6 +470,9 @@ export default function Home() {
     setSelectedCard(null);
     setNote("");
     setPhoto(undefined);
+    setRankingResult(null);
+    setResultStatus("idle");
+    submittedRoute.current = 0;
     setStartedAt(Date.now());
     setPhase("game");
   }
@@ -328,6 +483,14 @@ export default function Home() {
     setPlayerMode(savedDraft.playerMode);
     setDuration(savedDraft.duration);
     setMuseumName(savedDraft.museumName);
+    setNickname(savedDraft.nickname || nickname);
+    setCityId(savedDraft.cityId || "");
+    setMuseumId(savedDraft.museumId || "");
+    setRankingResult(savedDraft.rankingResult || null);
+    if (savedDraft.rankingResult) {
+      submittedRoute.current = savedDraft.startedAt;
+      setResultStatus("saved");
+    }
     setSelectedRounds(savedDraft.selectedRounds);
     setDeckOrders(savedDraft.deckOrders
       ? { ...createDeckOrders(), ...savedDraft.deckOrders }
@@ -383,6 +546,8 @@ export default function Home() {
     setSelectedCard(null);
     setCurrentRoundIndex(0);
     setSetupStep(1);
+    setRankingResult(null);
+    setResultStatus("idle");
     setPhase("setup");
   }
 
@@ -394,6 +559,10 @@ export default function Home() {
         playerMode,
         duration,
         museumName,
+        nickname,
+        cityId,
+        museumId,
+        rankingResult,
         selectedRounds,
         deckOrders,
         currentRoundIndex,
@@ -402,6 +571,35 @@ export default function Home() {
       });
     }
     setPhase("welcome");
+  }
+
+  function selectCity(nextCityId: string) {
+    setCityId(nextCityId);
+    setMuseumId("");
+    setMuseumName("");
+  }
+
+  function selectMuseum(nextMuseumId: string) {
+    setMuseumId(nextMuseumId);
+    const museum = museums.find((item) => item.id === nextMuseumId);
+    if (museum) setMuseumName(museum[language]);
+  }
+
+  function openLeaderboard() {
+    if (!cityId && cities.length) setCityId(cities[0].id);
+    setPhase("leaderboard");
+  }
+
+  async function installApp() {
+    if (isStandalone) return;
+    if (installPrompt) {
+      await installPrompt.prompt();
+      const choice = await installPrompt.userChoice;
+      if (choice.outcome === "accepted") setInstallPrompt(null);
+      else setInstallHelpOpen(true);
+      return;
+    }
+    setInstallHelpOpen((open) => !open);
   }
 
   async function createPassportBlob() {
@@ -541,6 +739,19 @@ export default function Home() {
               <button className="primary-button" onClick={() => setPhase("setup")}>{t.start}<span>→</span></button>
               {savedDraft && <button className="text-button" onClick={resumeAdventure}>{t.resume}</button>}
             </div>
+            <button className={`install-card ${isStandalone ? "installed" : ""}`} onClick={installApp}>
+              <span className="install-icon">{isStandalone ? "✓" : "↓"}</span>
+              <span><strong>{isStandalone ? (language === "ru" ? "Приложение установлено" : "App installed") : t.addHome}</strong><small>{isStandalone ? (language === "ru" ? "Открывается на весь экран" : "Opens full screen") : t.homeHint}</small></span>
+              {!isStandalone && <b>›</b>}
+            </button>
+            {installHelpOpen && !isStandalone && (
+              <div className="install-help">
+                <strong>{language === "ru" ? "Как установить" : "How to install"}</strong>
+                <p>{isIOS
+                  ? (language === "ru" ? "Откройте игру в Safari, нажмите «Поделиться» □↑ и выберите «На экран Домой»." : "Open the game in Safari, tap Share □↑ and choose “Add to Home Screen”.")
+                  : (language === "ru" ? "Откройте меню браузера ⋮ и выберите «Установить приложение» или «Добавить на главный экран»." : "Open the browser menu ⋮ and choose “Install app” or “Add to Home screen”.")}</p>
+              </div>
+            )}
             <p className="privacy-note"><span>⌁</span>{t.private}</p>
           </div>
         )}
@@ -581,10 +792,40 @@ export default function Home() {
                     <span className="duration-number">5</span><span><strong>{t.fullLabel}</strong><small>{t.fullMeta}</small></span><span className="radio" />
                   </button>
                 </div>
-                <label className="museum-field">
-                  <span>{t.museum} <small>· {t.optional}</small></span>
-                  <input value={museumName} onChange={(event) => setMuseumName(event.target.value)} placeholder={language === "ru" ? "Например, Новая Третьяковка" : "For example, Tate Modern"} />
-                </label>
+                <section className="ranking-setup">
+                  <div className="ranking-setup-title">
+                    <span>🏆</span>
+                    <div><strong>{language === "ru" ? "Участвовать в рейтинге" : "Join the leaderboard"}</strong><small>{language === "ru" ? "Необязательно. Нужны имя, город и музей." : "Optional. Add your name, city and museum."}</small></div>
+                  </div>
+                  <label className="app-field">
+                    <span>{language === "ru" ? "Ваше имя в рейтинге" : "Leaderboard name"}</span>
+                    <input value={nickname} onChange={(event) => setNickname(event.target.value)} maxLength={24} placeholder={language === "ru" ? "Например, Наташа" : "For example, Alex"} />
+                  </label>
+                  {locationsStatus === "ready" ? (
+                    <div className="location-fields">
+                      <label className="app-field">
+                        <span>{language === "ru" ? "Город" : "City"}</span>
+                        <select value={cityId} onChange={(event) => selectCity(event.target.value)}>
+                          <option value="">{language === "ru" ? "Выберите город" : "Choose a city"}</option>
+                          {cities.map((city) => <option key={city.id} value={city.id}>{city[language]}</option>)}
+                        </select>
+                      </label>
+                      <label className="app-field">
+                        <span>{t.museum}</span>
+                        <select value={museumId} onChange={(event) => selectMuseum(event.target.value)} disabled={!cityId}>
+                          <option value="">{language === "ru" ? "Выберите музей" : "Choose a museum"}</option>
+                          {filteredMuseums.map((museum) => <option key={museum.id} value={museum.id}>{museum[language]}</option>)}
+                        </select>
+                      </label>
+                    </div>
+                  ) : (
+                    <label className="app-field">
+                      <span>{t.museum} <small>· {t.optional}</small></span>
+                      <input value={museumName} onChange={(event) => setMuseumName(event.target.value)} placeholder={language === "ru" ? "Например, Новая Третьяковка" : "For example, Tate Modern"} />
+                    </label>
+                  )}
+                  {locationsStatus === "unavailable" && <p className="connection-note">{language === "ru" ? "Онлайн-рейтинг пока не подключён. Приз и баллы за маршрут всё равно сохранятся на экране." : "The online leaderboard is not connected yet. You will still receive a prize and route points."}</p>}
+                </section>
                 <button className="primary-button bottom-button" onClick={startAdventure}>{t.begin}<span>→</span></button>
               </>
             )}
@@ -667,6 +908,22 @@ export default function Home() {
             <h1>{t.completed}</h1>
             {museumName && <p className="museum-title">{museumName}</p>}
             <div className="summary-stats"><span><strong>{memories.length}</strong>{completedTasksLabel(memories.length, language)}</span><i /><span><strong>{savedMemoryCount}</strong>{savedImpressionsLabel(savedMemoryCount, language)}</span></div>
+            <section className="prize-card">
+              <div className="prize-medal"><span>✦</span></div>
+              <p>{language === "ru" ? "Ваш приз" : "Your prize"}</p>
+              <h2>{prizeTitle}</h2>
+              <div className="points-award">+{awardedPoints} <span>{language === "ru" ? "баллов" : "points"}</span></div>
+              {resultStatus === "sending" && <small>{language === "ru" ? "Добавляем результат в рейтинг…" : "Adding your result to the leaderboard…"}</small>}
+              {resultStatus === "saved" && rankingResult && (
+                <div className="rank-chips">
+                  {rankingResult.museumRank && <span>🏛 № {rankingResult.museumRank} {language === "ru" ? "в музее" : "in the museum"}</span>}
+                  {rankingResult.cityRank && <span>⌖ № {rankingResult.cityRank} {language === "ru" ? "в городе" : "in the city"}</span>}
+                </div>
+              )}
+              {resultStatus === "local" && <small>{language === "ru" ? "Баллы получены. Чтобы попасть в общий рейтинг, в следующий раз выберите город, музей и имя перед стартом." : "Points earned. Choose a city, museum and name before your next route to join the public leaderboard."}</small>}
+              {resultStatus === "duplicate" && <small>{language === "ru" ? "Приз ваш. В общий рейтинг засчитывается один маршрут в одном музее за день." : "The prize is yours. One route per museum per day counts toward the public leaderboard."}</small>}
+              <button className="ranking-button" onClick={openLeaderboard}>🏆 {language === "ru" ? "Посмотреть рейтинг" : "View leaderboard"} <span>→</span></button>
+            </section>
             <section className="passport-preview">
               <div className="passport-header"><span>{t.passport}</span><small>{new Date(startedAt).toLocaleDateString(language === "ru" ? "ru-RU" : "en-US", { day: "numeric", month: "long" })}</small></div>
               <div className="passport-route">
@@ -689,8 +946,88 @@ export default function Home() {
               <button className="share-button" disabled={isCreatingPassport} onClick={shareAdventure}>↗ {t.share}</button>
               <button className="text-button" onClick={resetAdventure}>{t.again}</button>
             </div>
-            <div className="home-tip"><span className="brand-mark">MA</span><div><strong>{t.addHome}</strong><p>{t.homeHint}</p></div></div>
+            <button className={`home-tip ${isStandalone ? "installed" : ""}`} onClick={installApp}><span className="brand-mark">{isStandalone ? "✓" : "MA"}</span><div><strong>{isStandalone ? (language === "ru" ? "Приложение установлено" : "App installed") : t.addHome}</strong><p>{isStandalone ? (language === "ru" ? "Museum Adventure открывается как обычное приложение." : "Museum Adventure now opens like a regular app.") : t.homeHint}</p></div><b>›</b></button>
+            {installHelpOpen && !isStandalone && (
+              <div className="install-help summary-install-help">
+                <strong>{language === "ru" ? "Как установить" : "How to install"}</strong>
+                <p>{isIOS
+                  ? (language === "ru" ? "В Safari нажмите «Поделиться» □↑, затем «На экран Домой»." : "In Safari, tap Share □↑, then “Add to Home Screen”.")
+                  : (language === "ru" ? "В меню браузера ⋮ выберите «Установить приложение» или «Добавить на главный экран»." : "In the browser menu ⋮ choose “Install app” or “Add to Home screen”.")}</p>
+              </div>
+            )}
           </div>
+        )}
+
+        {phase === "leaderboard" && (
+          <div className="screen leaderboard-screen">
+            <p className="eyebrow">Museum Adventure · {language === "ru" ? "рейтинг" : "leaderboard"}</p>
+            <h1>{language === "ru" ? "Исследователи искусства" : "Art explorers"}</h1>
+            <p className="leaderboard-lead">{language === "ru" ? "Выберите место и узнайте, кто набрал больше всего баллов за музейные приключения." : "Choose a place and see who earned the most points on museum adventures."}</p>
+
+            {locationsStatus === "ready" ? (
+              <>
+                <div className="leaderboard-filters">
+                  <label className="app-field">
+                    <span>{language === "ru" ? "Город" : "City"}</span>
+                    <select value={cityId} onChange={(event) => selectCity(event.target.value)}>
+                      <option value="">{language === "ru" ? "Выберите город" : "Choose a city"}</option>
+                      {cities.map((city) => <option key={city.id} value={city.id}>{city[language]}</option>)}
+                    </select>
+                  </label>
+                  <label className="app-field">
+                    <span>{language === "ru" ? "Музей" : "Museum"}</span>
+                    <select value={museumId} onChange={(event) => selectMuseum(event.target.value)} disabled={!cityId}>
+                      <option value="">{language === "ru" ? "Все музеи города" : "All city museums"}</option>
+                      {filteredMuseums.map((museum) => <option key={museum.id} value={museum.id}>{museum[language]}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div className="period-switch">
+                  <button className={rankingPeriod === "month" ? "active" : ""} onClick={() => setRankingPeriod("month")}>{language === "ru" ? "Этот месяц" : "This month"}</button>
+                  <button className={rankingPeriod === "all" ? "active" : ""} onClick={() => setRankingPeriod("all")}>{language === "ru" ? "За всё время" : "All time"}</button>
+                </div>
+
+                {!cityId && <div className="leaderboard-message"><span>⌖</span><strong>{language === "ru" ? "Сначала выберите город" : "Choose a city first"}</strong></div>}
+                {leaderboardStatus === "loading" && <div className="leaderboard-message"><span className="loader">✦</span><strong>{language === "ru" ? "Собираем результаты…" : "Loading results…"}</strong></div>}
+                {leaderboardStatus === "empty" && <div className="leaderboard-message"><span>🏆</span><strong>{language === "ru" ? "Здесь пока свободно первое место" : "First place is still open"}</strong><p>{language === "ru" ? "Завершите приключение в этом музее — и ваше имя появится здесь." : "Complete an adventure here and your name will appear."}</p></div>}
+                {leaderboardStatus === "unavailable" && <div className="leaderboard-message"><span>⌁</span><strong>{language === "ru" ? "Рейтинг временно недоступен" : "Leaderboard temporarily unavailable"}</strong><p>{language === "ru" ? "Попробуйте ещё раз немного позже." : "Please try again a little later."}</p></div>}
+                {leaderboardStatus === "ready" && (
+                  <div className="ranking-list">
+                    {leaderboardEntries.slice(0, 3).length > 0 && (
+                      <div className="podium">
+                        {leaderboardEntries.slice(0, 3).map((entry) => (
+                          <article key={entry.playerId} className={`place-${entry.rank} ${entry.playerId === playerId ? "current" : ""}`}>
+                            <span>{entry.rank === 1 ? "🥇" : entry.rank === 2 ? "🥈" : "🥉"}</span>
+                            <strong>{entry.nickname}</strong>
+                            <small>{entry.points} {language === "ru" ? "баллов" : "points"}</small>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                    <div className="ranking-table">
+                      {leaderboardEntries.map((entry) => (
+                        <article key={entry.playerId} className={entry.playerId === playerId ? "current" : ""}>
+                          <b>{entry.rank}</b>
+                          <span><strong>{entry.nickname}</strong><small>{entry.routes} {language === "ru" ? "маршр." : "routes"}</small></span>
+                          <em>{entry.points}</em>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="leaderboard-message"><span>🏆</span><strong>{language === "ru" ? "Рейтинг ещё подключается" : "Leaderboard is being connected"}</strong><p>{language === "ru" ? "После подключения Google-таблицы здесь появятся города, музеи и места игроков." : "Cities, museums and player ranks will appear here after Google Sheets is connected."}</p></div>
+            )}
+          </div>
+        )}
+
+        {(phase === "welcome" || phase === "summary" || phase === "leaderboard") && (
+          <nav className="app-tabs" aria-label={language === "ru" ? "Навигация приложения" : "App navigation"}>
+            <button className={phase === "welcome" ? "active" : ""} onClick={goHome}><span>⌂</span>{language === "ru" ? "Главная" : "Home"}</button>
+            <button onClick={() => setPhase("setup")}><span>✦</span>{language === "ru" ? "Играть" : "Play"}</button>
+            <button className={phase === "leaderboard" ? "active" : ""} onClick={openLeaderboard}><span>🏆</span>{language === "ru" ? "Рейтинг" : "Ranking"}</button>
+          </nav>
         )}
       </section>
     </main>
