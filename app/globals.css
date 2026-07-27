@@ -166,6 +166,18 @@ h2 { font-size: 38px; line-height: 1.08; }
 .mission-icon { width: 43px; height: 43px; display: grid; place-items: center; border-radius: 13px; color: white; background: var(--round-color); background-image: radial-gradient(circle at 30% 25%, rgba(255,255,255,.34), transparent 40%); font-size: 22px; box-shadow: 0 7px 15px color-mix(in srgb, var(--round-color) 24%, transparent); }
 .mission-card-top small { font-size: 13px; }
 .mission-card h2 { position: relative; z-index: 1; margin: 38px 0; color: var(--round-color); font-size: clamp(33px, 8.5vw, 43px); line-height: 1.08; text-align: center; text-wrap: balance; }
+.card-timer { margin: 15px 0; padding: 15px 16px; border: 2px solid #e4ba48; border-radius: 17px; background: #fff5d8; color: #5c4612; }
+.card-timer > div { display: flex; align-items: center; gap: 9px; }
+.card-timer > div span { width: 32px; height: 32px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; color: #fff; background: #c68b00; font-size: 18px; }
+.card-timer strong { font-size: 16px; line-height: 1.3; }
+.card-timer p { margin: 8px 0 11px; font-size: 13px; line-height: 1.4; }
+.card-timer > i { display: block; height: 7px; overflow: hidden; border-radius: 99px; background: rgba(92,70,18,.14); }
+.card-timer > i span { display: block; height: 100%; border-radius: inherit; background: #c68b00; transition: width .3s linear; }
+.card-timer.ready { border-color: #2b8b64; background: #e5f5ed; color: #13563e; }
+.card-timer.ready > div span, .card-timer.ready > i span { background: #167a5c; }
+.primary-button:disabled { cursor: not-allowed; opacity: .58; box-shadow: none; }
+.score-breakdown { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 11px; }
+.score-breakdown span { padding: 6px 9px; border-radius: 999px; color: #3d4a52; background: rgba(255,255,255,.66); font-size: 12px; font-weight: 800; }
 .tiny-mission { position: relative; z-index: 1; display: flex; gap: 13px; padding: 17px 0; border-top: 2px solid color-mix(in srgb, var(--round-color) 28%, transparent); border-bottom: 2px solid color-mix(in srgb, var(--round-color) 28%, transparent); text-align: left; }
 .tiny-mission > span { color: var(--round-color); font-size: 21px; }
 .tiny-mission small { color: var(--round-color); font-size: 12px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }

@@ -17,11 +17,17 @@ type City = { id: string; ru: string; en: string; country: string };
 type Museum = { id: string; cityId: string; ru: string; en: string };
 type LeaderboardEntry = { playerId: string; nickname: string; points: number; routes: number; rank: number };
 type RankingResult = {
+  routeId: string;
+  cityId: string;
+  museumId: string;
+  cityName: string;
+  museumName: string;
   pointsEarned: number;
   totalPoints: number;
+  globalRank: number | null;
   cityRank: number | null;
   museumRank: number | null;
-  bonuses: { completion: number; newMuseum: number; newCity: number };
+  bonuses: { stages: number; answers: number; photos: number; download: number; share: number };
 };
 
 type Memory = {
@@ -29,6 +35,8 @@ type Memory = {
   cardId: string;
   note: string;
   photo?: string;
+  elapsedSeconds: number;
+  qualified: boolean;
 };
 
 type SavedAdventure = {
@@ -36,6 +44,7 @@ type SavedAdventure = {
   language: Language;
   playerMode: PlayerMode;
   duration: Duration;
+  cityName?: string;
   museumName: string;
   nickname?: string;
   cityId?: string;
@@ -48,9 +57,10 @@ type SavedAdventure = {
   startedAt: number;
 };
 
-const STORAGE_KEY = "museum-adventure-v1";
+const STORAGE_KEY = "museum-adventure-v2";
 const PLAYER_ID_KEY = "museum-adventure-player-id";
 const PLAYER_NAME_KEY = "museum-adventure-player-name";
+const MIN_CARD_SECONDS = 180;
 
 function shuffleCards(cards: AdventureCard[]) {
   const shuffled = [...cards];
@@ -268,6 +278,7 @@ export default function Home() {
   const [setupStep, setSetupStep] = useState<1 | 2>(1);
   const [playerMode, setPlayerMode] = useState<PlayerMode>("solo");
   const [duration, setDuration] = useState<Duration>("full");
+  const [cityName, setCityName] = useState("");
   const [museumName, setMuseumName] = useState("");
   const [nickname, setNickname] = useState("");
   const [playerId, setPlayerId] = useState("");
@@ -275,7 +286,6 @@ export default function Home() {
   const [museums, setMuseums] = useState<Museum[]>([]);
   const [cityId, setCityId] = useState("");
   const [museumId, setMuseumId] = useState("");
-  const [locationsStatus, setLocationsStatus] = useState<"loading" | "ready" | "empty" | "unavailable">("loading");
   const [rankingResult, setRankingResult] = useState<RankingResult | null>(null);
   const [resultStatus, setResultStatus] = useState<"idle" | "sending" | "saved" | "local" | "duplicate">("idle");
   const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
@@ -296,6 +306,8 @@ export default function Home() {
   const [startedAt, setStartedAt] = useState(0);
   const [savedDraft, setSavedDraft] = useState<SavedAdventure | null>(null);
   const [isCreatingPassport, setIsCreatingPassport] = useState(false);
+  const [cardElapsedSeconds, setCardElapsedSeconds] = useState(0);
+  const [leaderboardRefresh, setLeaderboardRefresh] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
   const submittedRoute = useRef(0);
   const t = ui[language];
@@ -306,8 +318,13 @@ export default function Home() {
     .map((id) => currentRound.cards.find((cardItem) => cardItem.id === id))
     .filter((cardItem): cardItem is AdventureCard => Boolean(cardItem));
   const filteredMuseums = museums.filter((museum) => museum.cityId === cityId);
-  const localPoints = duration === "quick" ? 35 : 65;
+  const qualifiedCount = memories.filter((memory) => memory.qualified).length;
+  const answerCount = memories.filter((memory) => memory.note.trim()).length;
+  const photoCount = memories.filter((memory) => memory.photo).length;
+  const localPoints = qualifiedCount * 10 + answerCount * 5 + photoCount * 10;
   const awardedPoints = rankingResult?.pointsEarned ?? localPoints;
+  const elapsedSeconds = selectedCard ? cardElapsedSeconds : 0;
+  const secondsRemaining = Math.max(0, MIN_CARD_SECONDS - elapsedSeconds);
   const prizeTitle = duration === "quick"
     ? (language === "ru" ? "Искатель деталей" : "Detail Seeker")
     : (language === "ru" ? "Музейный исследователь" : "Museum Explorer");
@@ -360,9 +377,8 @@ export default function Home() {
       .then((data: { cities?: City[]; museums?: Museum[] }) => {
         setCities(data.cities || []);
         setMuseums(data.museums || []);
-        setLocationsStatus(data.cities?.length && data.museums?.length ? "ready" : "empty");
       })
-      .catch(() => setLocationsStatus("unavailable"));
+      .catch(() => undefined);
 
     return () => {
       window.clearTimeout(timer);
@@ -378,6 +394,7 @@ export default function Home() {
       language,
       playerMode,
       duration,
+      cityName,
       museumName,
       nickname,
       cityId,
@@ -394,7 +411,15 @@ export default function Home() {
     } catch {
       // The adventure remains usable even when the browser storage quota is full.
     }
-  }, [phase, language, playerMode, duration, museumName, nickname, cityId, museumId, rankingResult, selectedRounds, deckOrders, currentRoundIndex, memories, startedAt]);
+  }, [phase, language, playerMode, duration, cityName, museumName, nickname, cityId, museumId, rankingResult, selectedRounds, deckOrders, currentRoundIndex, memories, startedAt]);
+
+  useEffect(() => {
+    if (phase !== "game" || !selectedCard) return;
+    const timer = window.setInterval(() => {
+      setCardElapsedSeconds((seconds) => Math.min(MIN_CARD_SECONDS, seconds + 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [phase, selectedCard]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -404,7 +429,7 @@ export default function Home() {
     if (phase !== "summary" || !startedAt || submittedRoute.current === startedAt) return;
     submittedRoute.current = startedAt;
 
-    if (!playerId || nickname.trim().length < 2 || !cityId || !museumId) {
+    if (!playerId || nickname.trim().length < 2 || cityName.trim().length < 2 || museumName.trim().length < 2) {
       const timer = window.setTimeout(() => setResultStatus("local"), 0);
       return () => window.clearTimeout(timer);
     }
@@ -417,10 +442,13 @@ export default function Home() {
       body: JSON.stringify({
         playerId,
         nickname: nickname.trim(),
-        cityId,
-        museumId,
+        cityName: cityName.trim(),
+        museumName: museumName.trim(),
         duration,
         stages: selectedRounds.length,
+        qualifiedStages: qualifiedCount,
+        answerCount,
+        photoCount,
       }),
     })
       .then(async (response) => {
@@ -430,17 +458,24 @@ export default function Home() {
           return;
         }
         if (!response.ok) throw new Error("result unavailable");
-        setRankingResult(data as RankingResult);
+        const savedResult = data as RankingResult;
+        setRankingResult(savedResult);
+        setCityId(savedResult.cityId);
+        setMuseumId(savedResult.museumId);
+        setCityName(savedResult.cityName);
+        setMuseumName(savedResult.museumName);
+        setLeaderboardRefresh((value) => value + 1);
         setResultStatus("saved");
       })
       .catch(() => setResultStatus("local"));
-  }, [phase, startedAt, playerId, nickname, cityId, museumId, duration, selectedRounds.length]);
+  }, [phase, startedAt, playerId, nickname, cityName, museumName, duration, selectedRounds.length, qualifiedCount, answerCount, photoCount]);
 
   useEffect(() => {
-    if (phase !== "leaderboard" || !cityId) return;
+    if (phase !== "leaderboard") return;
     const controller = new AbortController();
     queueMicrotask(() => setLeaderboardStatus("loading"));
-    const parameters = new URLSearchParams({ cityId, period: rankingPeriod });
+    const parameters = new URLSearchParams({ period: rankingPeriod });
+    if (cityId) parameters.set("cityId", cityId);
     if (museumId) parameters.set("museumId", museumId);
     if (playerId) parameters.set("playerId", playerId);
     fetch(`/api/leaderboard?${parameters}`, { signal: controller.signal })
@@ -457,7 +492,7 @@ export default function Home() {
         if ((error as Error).name !== "AbortError") setLeaderboardStatus("unavailable");
       });
     return () => controller.abort();
-  }, [phase, cityId, museumId, rankingPeriod, playerId]);
+  }, [phase, cityId, museumId, rankingPeriod, playerId, leaderboardRefresh]);
 
   const savedMemoryCount = useMemo(
     () => memories.filter((memory) => memory.note.trim() || memory.photo).length,
@@ -470,6 +505,7 @@ export default function Home() {
     setCurrentRoundIndex(0);
     setMemories([]);
     setSelectedCard(null);
+    setCardElapsedSeconds(0);
     setNote("");
     setPhoto(undefined);
     setRankingResult(null);
@@ -484,6 +520,7 @@ export default function Home() {
     setLanguage(savedDraft.language);
     setPlayerMode(savedDraft.playerMode);
     setDuration(savedDraft.duration);
+    setCityName(savedDraft.cityName || "");
     setMuseumName(savedDraft.museumName);
     setNickname(savedDraft.nickname || nickname);
     setCityId(savedDraft.cityId || "");
@@ -498,7 +535,11 @@ export default function Home() {
       ? { ...createDeckOrders(), ...savedDraft.deckOrders }
       : createDeckOrders());
     setCurrentRoundIndex(savedDraft.currentRoundIndex);
-    setMemories(savedDraft.memories);
+    setMemories(savedDraft.memories.map((memory) => ({
+      ...memory,
+      elapsedSeconds: memory.elapsedSeconds || 0,
+      qualified: Boolean(memory.qualified),
+    })));
     setStartedAt(savedDraft.startedAt);
     setSelectedCard(null);
     setPhase(savedDraft.phase);
@@ -506,6 +547,7 @@ export default function Home() {
 
   function chooseCard(cardIndex: number) {
     setSelectedCard(currentDeck[cardIndex]);
+    setCardElapsedSeconds(0);
     setNote("");
     setPhoto(undefined);
     setMemoryOpen(false);
@@ -513,6 +555,7 @@ export default function Home() {
 
   function chooseAnotherCard() {
     setSelectedCard(randomDifferentCard(currentRoundId, selectedCard?.id));
+    setCardElapsedSeconds(0);
     setNote("");
     setPhoto(undefined);
   }
@@ -524,16 +567,24 @@ export default function Home() {
   }
 
   function completeRound() {
-    if (!selectedCard) return;
+    if (!selectedCard || secondsRemaining > 0) return;
     const nextMemories = [
       ...memories.filter((item) => item.roundId !== currentRoundId),
-      { roundId: currentRoundId, cardId: selectedCard.id, note: note.trim(), photo },
+      {
+        roundId: currentRoundId,
+        cardId: selectedCard.id,
+        note: note.trim(),
+        photo,
+        elapsedSeconds,
+        qualified: elapsedSeconds >= MIN_CARD_SECONDS,
+      },
     ];
     setMemories(nextMemories);
     setSelectedCard(null);
     setNote("");
     setPhoto(undefined);
     setMemoryOpen(false);
+    setCardElapsedSeconds(0);
     if (currentRoundIndex === selectedRounds.length - 1) {
       setPhase("summary");
     } else {
@@ -560,6 +611,7 @@ export default function Home() {
         language,
         playerMode,
         duration,
+        cityName,
         museumName,
         nickname,
         cityId,
@@ -577,6 +629,8 @@ export default function Home() {
 
   function selectCity(nextCityId: string) {
     setCityId(nextCityId);
+    const city = cities.find((item) => item.id === nextCityId);
+    setCityName(city ? city[language] : "");
     setMuseumId("");
     setMuseumName("");
   }
@@ -588,8 +642,22 @@ export default function Home() {
   }
 
   function openLeaderboard() {
-    if (!cityId && cities.length) setCityId(cities[0].id);
     setPhase("leaderboard");
+  }
+
+  function changeCityName(value: string) {
+    setCityName(value);
+    const match = cities.find((city) => city.ru.toLocaleLowerCase() === value.trim().toLocaleLowerCase() || city.en.toLocaleLowerCase() === value.trim().toLocaleLowerCase());
+    setCityId(match?.id || "");
+    setMuseumId("");
+  }
+
+  function changeMuseumName(value: string) {
+    setMuseumName(value);
+    const match = museums.find((museum) =>
+      (!cityId || museum.cityId === cityId) &&
+      (museum.ru.toLocaleLowerCase() === value.trim().toLocaleLowerCase() || museum.en.toLocaleLowerCase() === value.trim().toLocaleLowerCase()));
+    setMuseumId(match?.id || "");
   }
 
   async function installApp() {
@@ -672,6 +740,39 @@ export default function Home() {
     return new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Canvas export failed")), "image/png"));
   }
 
+  async function awardActionBonus(bonusType: "download" | "share") {
+    if (!rankingResult?.routeId || !playerId) return;
+    try {
+      const response = await fetch("/api/results", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "addBonus",
+          playerId,
+          routeId: rankingResult.routeId,
+          bonusType,
+        }),
+      });
+      if (!response.ok) return;
+      const data = await response.json();
+      setRankingResult((previous) => previous ? {
+        ...previous,
+        pointsEarned: data.pointsEarned,
+        totalPoints: data.totalPoints,
+        globalRank: data.globalRank,
+        cityRank: data.cityRank,
+        museumRank: data.museumRank,
+        bonuses: {
+          ...previous.bonuses,
+          [bonusType]: data.bonusValue ?? previous.bonuses[bonusType],
+        },
+      } : previous);
+      setLeaderboardRefresh((value) => value + 1);
+    } catch {
+      // The downloaded or shared passport remains available if the online bonus cannot be saved.
+    }
+  }
+
   async function savePassport() {
     setIsCreatingPassport(true);
     try {
@@ -681,6 +782,7 @@ export default function Home() {
       link.download = "museum-adventure-passport.png";
       link.click();
       URL.revokeObjectURL(link.href);
+      await awardActionBonus("download");
     } finally {
       setIsCreatingPassport(false);
     }
@@ -696,6 +798,7 @@ export default function Home() {
         : `I completed a Museum Adventure: ${memories.length} ${completedTasksLabel(memories.length, "en")} and ${savedMemoryCount} ${savedImpressionsLabel(savedMemoryCount, "en")}.`;
       if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
         await navigator.share({ title: "Museum Adventure", text, files: [file] });
+        await awardActionBonus("share");
       } else {
         await savePassport();
       }
@@ -804,31 +907,19 @@ export default function Home() {
                     <span>{language === "ru" ? "Ваше имя в рейтинге" : "Leaderboard name"}</span>
                     <input value={nickname} onChange={(event) => setNickname(event.target.value)} maxLength={24} placeholder={language === "ru" ? "Например, Наташа" : "For example, Alex"} />
                   </label>
-                  {locationsStatus === "ready" ? (
-                    <div className="location-fields">
-                      <label className="app-field">
-                        <span>{language === "ru" ? "Город" : "City"}</span>
-                        <select value={cityId} onChange={(event) => selectCity(event.target.value)}>
-                          <option value="">{language === "ru" ? "Выберите город" : "Choose a city"}</option>
-                          {cities.map((city) => <option key={city.id} value={city.id}>{city[language]}</option>)}
-                        </select>
-                      </label>
-                      <label className="app-field">
-                        <span>{t.museum}</span>
-                        <select value={museumId} onChange={(event) => selectMuseum(event.target.value)} disabled={!cityId}>
-                          <option value="">{language === "ru" ? "Выберите музей" : "Choose a museum"}</option>
-                          {filteredMuseums.map((museum) => <option key={museum.id} value={museum.id}>{museum[language]}</option>)}
-                        </select>
-                      </label>
-                    </div>
-                  ) : (
+                  <div className="location-fields">
                     <label className="app-field">
-                      <span>{t.museum} <small>· {t.optional}</small></span>
-                      <input value={museumName} onChange={(event) => setMuseumName(event.target.value)} placeholder={language === "ru" ? "Например, Новая Третьяковка" : "For example, Tate Modern"} />
+                      <span>{language === "ru" ? "Город" : "City"}</span>
+                      <input list="city-options" value={cityName} onChange={(event) => changeCityName(event.target.value)} placeholder={language === "ru" ? "Например, Москва" : "For example, London"} />
                     </label>
-                  )}
-                  {locationsStatus === "unavailable" && <p className="connection-note">{language === "ru" ? "Онлайн-рейтинг пока не подключён. Приз и баллы за маршрут всё равно сохранятся на экране." : "The online leaderboard is not connected yet. You will still receive a prize and route points."}</p>}
-                  {locationsStatus === "empty" && <p className="connection-note">{language === "ru" ? "Рейтинг подключён, но список городов и музеев пока не заполнен. Приз и баллы за маршрут всё равно появятся на финише." : "The leaderboard is connected, but its city and museum lists are still empty. You will still receive a prize and route points."}</p>}
+                    <label className="app-field">
+                      <span>{t.museum}</span>
+                      <input list="museum-options" value={museumName} onChange={(event) => changeMuseumName(event.target.value)} placeholder={language === "ru" ? "Например, Новая Третьяковка" : "For example, Tate Modern"} />
+                    </label>
+                  </div>
+                  <datalist id="city-options">{cities.map((city) => <option key={city.id} value={city[language]} />)}</datalist>
+                  <datalist id="museum-options">{(cityId ? filteredMuseums : museums).map((museum) => <option key={museum.id} value={museum[language]} />)}</datalist>
+                  <p className="connection-note">{language === "ru" ? "Имя, город и музей обязательны только для рейтинга. Если места ещё нет в списке, просто напишите его — оно добавится автоматически." : "Name, city and museum are only required for the leaderboard. New places are added automatically."}</p>
                   <p className="author-note"><span>НС</span><span><strong>{language === "ru" ? "Совет от Натальи" : "A note from Natalia"}</strong>{language === "ru" ? " Не спешите увидеть весь музей. Одного произведения достаточно, чтобы начать настоящее путешествие." : " Do not rush to see the whole museum. One artwork is enough to begin a real adventure."}</span></p>
                 </section>
                 <button className="primary-button bottom-button" onClick={startAdventure}>{t.begin}<span>→</span></button>
@@ -882,6 +973,18 @@ export default function Home() {
                   <div className="tiny-mission"><span>✦</span><div><small>{t.tinyMission}</small><p>{selectedCard.mission[language]}</p></div></div>
                   <p className="mode-cue">{modeCue[playerMode][language]}</p>
                 </article>
+                <div className={`card-timer ${secondsRemaining === 0 ? "ready" : ""}`}>
+                  <div>
+                    <span>{secondsRemaining === 0 ? "✓" : "◷"}</span>
+                    <strong>{secondsRemaining === 0
+                      ? (language === "ru" ? "Карта принесёт 10 баллов" : "This card earns 10 points")
+                      : (language === "ru"
+                        ? `Уделите заданию ещё ${String(Math.floor(secondsRemaining / 60)).padStart(2, "0")}:${String(secondsRemaining % 60).padStart(2, "0")}`
+                        : `Stay with this task for ${String(Math.floor(secondsRemaining / 60)).padStart(2, "0")}:${String(secondsRemaining % 60).padStart(2, "0")} more`)}</strong>
+                  </div>
+                  <p>{language === "ru" ? "Баллы начисляются после 3 минут внимательной работы с каждой картой." : "Points unlock after 3 minutes of focused work with each card."}</p>
+                  <i><span style={{ width: `${Math.min(100, (elapsedSeconds / MIN_CARD_SECONDS) * 100)}%` }} /></i>
+                </div>
 
                 <button className={`memory-toggle ${memoryOpen ? "open" : ""}`} onClick={() => setMemoryOpen((open) => !open)}>
                   <span className="memory-plus">{memoryOpen ? "−" : "+"}</span><span><strong>{t.memory}</strong><small>{t.memoryHint}</small></span><span>⌄</span>
@@ -900,7 +1003,7 @@ export default function Home() {
                 )}
                 <div className="mission-actions">
                   <button className="secondary-button" onClick={chooseAnotherCard}>↻ {t.another}</button>
-                  <button className="primary-button" onClick={completeRound}>{currentRoundIndex === selectedRounds.length - 1 ? t.finish : t.done}<span>→</span></button>
+                  <button className="primary-button" disabled={secondsRemaining > 0} onClick={completeRound}>{secondsRemaining > 0 ? (language === "ru" ? "Продолжить после таймера" : "Continue after timer") : (currentRoundIndex === selectedRounds.length - 1 ? t.finish : t.done)}<span>→</span></button>
                 </div>
               </div>
             )}
@@ -921,12 +1024,22 @@ export default function Home() {
               <div className="points-award">+{awardedPoints} <span>{language === "ru" ? "баллов" : "points"}</span></div>
               {resultStatus === "sending" && <small>{language === "ru" ? "Добавляем результат в рейтинг…" : "Adding your result to the leaderboard…"}</small>}
               {resultStatus === "saved" && rankingResult && (
-                <div className="rank-chips">
-                  {rankingResult.museumRank && <span>🏛 № {rankingResult.museumRank} {language === "ru" ? "в музее" : "in the museum"}</span>}
-                  {rankingResult.cityRank && <span>⌖ № {rankingResult.cityRank} {language === "ru" ? "в городе" : "in the city"}</span>}
-                </div>
+                <>
+                  <div className="rank-chips">
+                    {rankingResult.globalRank && <span>🌍 № {rankingResult.globalRank} {language === "ru" ? "в общем рейтинге" : "overall"}</span>}
+                    {rankingResult.museumRank && <span>🏛 № {rankingResult.museumRank} {language === "ru" ? "в музее" : "in the museum"}</span>}
+                    {rankingResult.cityRank && <span>⌖ № {rankingResult.cityRank} {language === "ru" ? "в городе" : "in the city"}</span>}
+                  </div>
+                  <div className="score-breakdown">
+                    <span>{rankingResult.bonuses.stages} · {language === "ru" ? "время" : "time"}</span>
+                    <span>{rankingResult.bonuses.answers} · {language === "ru" ? "ответы" : "answers"}</span>
+                    <span>{rankingResult.bonuses.photos} · {language === "ru" ? "фото" : "photos"}</span>
+                    <span>{rankingResult.bonuses.download} · {language === "ru" ? "скачивание" : "download"}</span>
+                    <span>{rankingResult.bonuses.share} · {language === "ru" ? "поделиться" : "sharing"}</span>
+                  </div>
+                </>
               )}
-              {resultStatus === "local" && <small>{language === "ru" ? "Баллы получены. Чтобы попасть в общий рейтинг, в следующий раз выберите город, музей и имя перед стартом." : "Points earned. Choose a city, museum and name before your next route to join the public leaderboard."}</small>}
+              {resultStatus === "local" && <small>{language === "ru" ? "Результат сохранён на телефоне, но не отправлен в общий рейтинг. Для рейтинга нужны имя, город и музей." : "Saved on this phone, but not added online. Name, city and museum are required."}</small>}
               {resultStatus === "duplicate" && <small>{language === "ru" ? "Приз ваш. В общий рейтинг засчитывается один маршрут в одном музее за день." : "The prize is yours. One route per museum per day counts toward the public leaderboard."}</small>}
               <button className="ranking-button" onClick={openLeaderboard}>🏆 {language === "ru" ? "Посмотреть рейтинг" : "View leaderboard"} <span>→</span></button>
             </section>
@@ -968,16 +1081,16 @@ export default function Home() {
         {phase === "leaderboard" && (
           <div className="screen leaderboard-screen">
             <p className="eyebrow">Museum Adventure · {language === "ru" ? "рейтинг" : "leaderboard"}</p>
-            <h1>{language === "ru" ? "Исследователи искусства" : "Art explorers"}</h1>
-            <p className="leaderboard-lead">{language === "ru" ? "Выберите место и узнайте, кто набрал больше всего баллов за музейные приключения." : "Choose a place and see who earned the most points on museum adventures."}</p>
+            <h1>{language === "ru" ? "Общий рейтинг" : "Overall leaderboard"}</h1>
+            <p className="leaderboard-lead">{language === "ru" ? "Здесь видны все участники. При желании отфильтруйте рейтинг по городу или музею." : "Every participant appears here. You can optionally filter by city or museum."}</p>
 
-            {locationsStatus === "ready" ? (
-              <>
+            <>
+              {cities.length > 0 && (
                 <div className="leaderboard-filters">
                   <label className="app-field">
                     <span>{language === "ru" ? "Город" : "City"}</span>
                     <select value={cityId} onChange={(event) => selectCity(event.target.value)}>
-                      <option value="">{language === "ru" ? "Выберите город" : "Choose a city"}</option>
+                      <option value="">{language === "ru" ? "Все города" : "All cities"}</option>
                       {cities.map((city) => <option key={city.id} value={city.id}>{city[language]}</option>)}
                     </select>
                   </label>
@@ -989,16 +1102,16 @@ export default function Home() {
                     </select>
                   </label>
                 </div>
-                <div className="period-switch">
-                  <button className={rankingPeriod === "month" ? "active" : ""} onClick={() => setRankingPeriod("month")}>{language === "ru" ? "Этот месяц" : "This month"}</button>
-                  <button className={rankingPeriod === "all" ? "active" : ""} onClick={() => setRankingPeriod("all")}>{language === "ru" ? "За всё время" : "All time"}</button>
-                </div>
+              )}
+              <div className="period-switch">
+                <button className={rankingPeriod === "month" ? "active" : ""} onClick={() => setRankingPeriod("month")}>{language === "ru" ? "Этот месяц" : "This month"}</button>
+                <button className={rankingPeriod === "all" ? "active" : ""} onClick={() => setRankingPeriod("all")}>{language === "ru" ? "За всё время" : "All time"}</button>
+              </div>
 
-                {!cityId && <div className="leaderboard-message"><span>⌖</span><strong>{language === "ru" ? "Сначала выберите город" : "Choose a city first"}</strong></div>}
-                {leaderboardStatus === "loading" && <div className="leaderboard-message"><span className="loader">✦</span><strong>{language === "ru" ? "Собираем результаты…" : "Loading results…"}</strong></div>}
-                {leaderboardStatus === "empty" && <div className="leaderboard-message"><span>🏆</span><strong>{language === "ru" ? "Здесь пока свободно первое место" : "First place is still open"}</strong><p>{language === "ru" ? "Завершите приключение в этом музее — и ваше имя появится здесь." : "Complete an adventure here and your name will appear."}</p></div>}
-                {leaderboardStatus === "unavailable" && <div className="leaderboard-message"><span>⌁</span><strong>{language === "ru" ? "Рейтинг временно недоступен" : "Leaderboard temporarily unavailable"}</strong><p>{language === "ru" ? "Попробуйте ещё раз немного позже." : "Please try again a little later."}</p></div>}
-                {leaderboardStatus === "ready" && (
+              {leaderboardStatus === "loading" && <div className="leaderboard-message"><span className="loader">✦</span><strong>{language === "ru" ? "Собираем результаты…" : "Loading results…"}</strong></div>}
+              {leaderboardStatus === "empty" && <div className="leaderboard-message"><span>🏆</span><strong>{language === "ru" ? "Первое место пока свободно" : "First place is still open"}</strong><p>{language === "ru" ? "Первый завершённый маршрут появится здесь автоматически." : "The first completed route will appear here automatically."}</p></div>}
+              {leaderboardStatus === "unavailable" && <div className="leaderboard-message"><span>⌁</span><strong>{language === "ru" ? "Рейтинг временно недоступен" : "Leaderboard temporarily unavailable"}</strong><p>{language === "ru" ? "Попробуйте ещё раз немного позже." : "Please try again a little later."}</p></div>}
+              {leaderboardStatus === "ready" && (
                   <div className="ranking-list">
                     {leaderboardEntries.slice(0, 3).length > 0 && (
                       <div className="podium">
@@ -1021,11 +1134,8 @@ export default function Home() {
                       ))}
                     </div>
                   </div>
-                )}
-              </>
-            ) : (
-              <div className="leaderboard-message"><span>🏆</span><strong>{locationsStatus === "empty" ? (language === "ru" ? "Список мест пока пуст" : "The location list is empty") : (language === "ru" ? "Рейтинг временно недоступен" : "Leaderboard temporarily unavailable")}</strong><p>{locationsStatus === "empty" ? (language === "ru" ? "Связь с рейтингом работает. Города и музеи появятся здесь, когда их добавят в таблицу." : "The leaderboard connection works. Cities and museums will appear after they are added to the spreadsheet.") : (language === "ru" ? "Не удалось получить данные. Попробуйте ещё раз позже." : "The data could not be loaded. Please try again later.")}</p></div>
-            )}
+              )}
+            </>
           </div>
         )}
 
