@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const result = await googleScriptGet({ action: "locations" });
     return NextResponse.json(result, {
-      headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
+      headers: { "Cache-Control": "private, no-store" },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "UNKNOWN_ERROR";

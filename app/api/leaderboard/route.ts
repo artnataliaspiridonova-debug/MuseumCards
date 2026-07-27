@@ -9,10 +9,6 @@ export async function GET(request: NextRequest) {
   const museumId = request.nextUrl.searchParams.get("museumId") || "";
   const playerId = request.nextUrl.searchParams.get("playerId") || "";
 
-  if (!cityId && !museumId) {
-    return NextResponse.json({ ok: false, error: "LOCATION_REQUIRED" }, { status: 400 });
-  }
-
   try {
     const result = await googleScriptGet({
       action: "leaderboard",
@@ -22,7 +18,7 @@ export async function GET(request: NextRequest) {
       playerId,
     });
     return NextResponse.json(result, {
-      headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" },
+      headers: { "Cache-Control": "private, no-store" },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "UNKNOWN_ERROR";
