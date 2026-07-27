@@ -20,18 +20,21 @@ const HEADERS = {
     "stages",
     "points",
     "ranking_date",
+    "qualified_stages",
+    "answer_count",
+    "photo_count",
+    "downloaded",
+    "shared",
   ],
 };
 
 const SCORE = {
   STAGE: 10,
-  QUICK_BONUS: 5,
-  FULL_BONUS: 15,
-  NEW_MUSEUM: 20,
-  NEW_CITY: 30,
+  ANSWER: 5,
+  PHOTO: 10,
+  DOWNLOAD: 10,
+  SHARE: 20,
 };
-
-const MAX_LEADERBOARD_ROWS = 100;
 
 /**
  * Run once after pasting the script.
@@ -52,12 +55,14 @@ function setupMuseumAdventure() {
       return;
     }
 
-    const actualHeaders = sheet
-      .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), requiredHeaders.length))
-      .getDisplayValues()[0]
-      .slice(0, requiredHeaders.length);
+    const existingWidth = Math.max(sheet.getLastColumn(), 1);
+    const actualHeaders = sheet.getRange(1, 1, 1, existingWidth).getDisplayValues()[0];
+    const existingHeaders = actualHeaders.filter(function (header) {
+      return String(header).trim() !== "";
+    });
+    const expectedExisting = requiredHeaders.slice(0, existingHeaders.length);
 
-    if (actualHeaders.join("|") !== requiredHeaders.join("|")) {
+    if (existingHeaders.join("|") !== expectedExisting.join("|")) {
       throw new Error(
         'Проверьте заголовки листа "' +
           sheetName +
@@ -65,6 +70,14 @@ function setupMuseumAdventure() {
           requiredHeaders.join(", "),
       );
     }
+    if (existingHeaders.length < requiredHeaders.length) {
+      const missingHeaders = requiredHeaders.slice(existingHeaders.length);
+      sheet
+        .getRange(1, existingHeaders.length + 1, 1, missingHeaders.length)
+        .setValues([missingHeaders])
+        .setFontWeight("bold");
+    }
+    sheet.setFrozenRows(1);
   });
 
   return "Museum Adventure sheets are ready";
@@ -112,11 +125,13 @@ function doPost(event) {
     const body = JSON.parse((event && event.postData && event.postData.contents) || "{}");
     assertApiKey_(body.apiKey);
 
-    if (body.action !== "saveResult") {
-      return jsonOutput_({ ok: false, error: "UNKNOWN_ACTION" });
+    if (body.action === "saveResult") {
+      return jsonOutput_({ ok: true, ...saveResult_(body) });
     }
-
-    return jsonOutput_({ ok: true, ...saveResult_(body) });
+    if (body.action === "addBonus") {
+      return jsonOutput_({ ok: true, ...addBonus_(body) });
+    }
+    return jsonOutput_({ ok: false, error: "UNKNOWN_ACTION" });
   } catch (error) {
     return errorOutput_(error);
   }
@@ -125,23 +140,16 @@ function doPost(event) {
 function saveResult_(body) {
   const playerId = cleanId_(body.playerId, "playerId");
   const nickname = cleanNickname_(body.nickname);
-  const cityId = cleanId_(body.cityId, "cityId");
-  const museumId = cleanId_(body.museumId, "museumId");
+  const cityName = cleanLocationName_(body.cityName, "cityName");
+  const museumName = cleanLocationName_(body.museumName, "museumName");
   const duration = body.duration === "quick" ? "quick" : body.duration === "full" ? "full" : "";
   const expectedStages = duration === "quick" ? 3 : 5;
   const stages = Number(body.stages);
+  const qualifiedStages = clampCount_(body.qualifiedStages, stages);
+  const answerCount = clampCount_(body.answerCount, stages);
+  const photoCount = clampCount_(body.photoCount, stages);
 
   if (!duration || stages !== expectedStages) throw new Error("INVALID_ROUTE");
-
-  const locations = getLocations_();
-  const city = locations.cities.find(function (item) {
-    return item.id === cityId;
-  });
-  const museum = locations.museums.find(function (item) {
-    return item.id === museumId && item.cityId === cityId;
-  });
-
-  if (!city || !museum) throw new Error("UNKNOWN_LOCATION");
 
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
@@ -150,6 +158,9 @@ function saveResult_(body) {
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     const routeSheet = spreadsheet.getSheetByName(SHEETS.ROUTES);
     const playerSheet = spreadsheet.getSheetByName(SHEETS.PLAYERS);
+    const location = ensureLocation_(spreadsheet, cityName, museumName);
+    const cityId = location.cityId;
+    const museumId = location.museumId;
     const routes = readObjects_(routeSheet);
     const timezone = spreadsheet.getSpreadsheetTimeZone() || Session.getScriptTimeZone();
     const now = new Date();
@@ -168,20 +179,10 @@ function saveResult_(body) {
     const playerRoutes = routes.filter(function (route) {
       return String(route.player_id) === playerId;
     });
-    const isNewMuseum = !playerRoutes.some(function (route) {
-      return String(route.museum_id) === museumId;
-    });
-    const isNewCity = !playerRoutes.some(function (route) {
-      return String(route.city_id) === cityId;
-    });
-
-    const basePoints = stages * SCORE.STAGE;
-    const completionBonus = duration === "quick" ? SCORE.QUICK_BONUS : SCORE.FULL_BONUS;
-    const points =
-      basePoints +
-      completionBonus +
-      (isNewMuseum ? SCORE.NEW_MUSEUM : 0) +
-      (isNewCity ? SCORE.NEW_CITY : 0);
+    const stagePoints = qualifiedStages * SCORE.STAGE;
+    const answerPoints = answerCount * SCORE.ANSWER;
+    const photoPoints = photoCount * SCORE.PHOTO;
+    const points = stagePoints + answerPoints + photoPoints;
 
     upsertPlayer_(playerSheet, playerId, nickname, now);
 
@@ -197,6 +198,11 @@ function saveResult_(body) {
       stages,
       points,
       rankingDate,
+      qualifiedStages,
+      answerCount,
+      photoCount,
+      false,
+      false,
     ]);
 
     SpreadsheetApp.flush();
@@ -213,6 +219,11 @@ function saveResult_(body) {
         stages: stages,
         points: points,
         ranking_date: rankingDate,
+        qualified_stages: qualifiedStages,
+        answer_count: answerCount,
+        photo_count: photoCount,
+        downloaded: false,
+        shared: false,
       },
     ]);
 
@@ -235,22 +246,167 @@ function saveResult_(body) {
     const totalPoints = playerRoutes.reduce(function (sum, route) {
       return sum + Number(route.points || 0);
     }, 0) + points;
+    const globalRanking = buildRanking_(allRoutes, {
+      period: "month",
+      cityId: "",
+      museumId: "",
+      playerId: playerId,
+      timezone: timezone,
+      now: now,
+    });
 
     return {
       routeId: routeId,
+      cityId: cityId,
+      museumId: museumId,
+      cityName: cityName,
+      museumName: museumName,
       pointsEarned: points,
       totalPoints: totalPoints,
+      globalRank: globalRanking.currentPlayer ? globalRanking.currentPlayer.rank : null,
       cityRank: cityRanking.currentPlayer ? cityRanking.currentPlayer.rank : null,
       museumRank: museumRanking.currentPlayer ? museumRanking.currentPlayer.rank : null,
       bonuses: {
-        completion: completionBonus,
-        newMuseum: isNewMuseum ? SCORE.NEW_MUSEUM : 0,
-        newCity: isNewCity ? SCORE.NEW_CITY : 0,
+        stages: stagePoints,
+        answers: answerPoints,
+        photos: photoPoints,
+        download: 0,
+        share: 0,
       },
     };
   } finally {
     lock.releaseLock();
   }
+}
+
+function addBonus_(body) {
+  const playerId = cleanId_(body.playerId, "playerId");
+  const routeId = cleanId_(body.routeId, "routeId");
+  const bonusType = body.bonusType === "download" ? "download" : body.bonusType === "share" ? "share" : "";
+  if (!bonusType) throw new Error("INVALID_BONUS");
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = spreadsheet.getSheetByName(SHEETS.ROUTES);
+    const values = sheet.getDataRange().getValues();
+    if (values.length < 2) throw new Error("ROUTE_NOT_FOUND");
+    const headers = values[0].map(function (value) {
+      return String(value).trim();
+    });
+    const indexes = {};
+    headers.forEach(function (header, index) {
+      indexes[header] = index;
+    });
+    const rowIndex = values.slice(1).findIndex(function (row) {
+      return String(row[indexes.route_id]) === routeId && String(row[indexes.player_id]) === playerId;
+    });
+    if (rowIndex === -1) throw new Error("ROUTE_NOT_FOUND");
+
+    const absoluteRow = rowIndex + 2;
+    const flagHeader = bonusType === "download" ? "downloaded" : "shared";
+    const bonus = bonusType === "download" ? SCORE.DOWNLOAD : SCORE.SHARE;
+    const alreadyAwarded = isActive_(values[rowIndex + 1][indexes[flagHeader]]);
+    if (!alreadyAwarded) {
+      sheet.getRange(absoluteRow, indexes[flagHeader] + 1).setValue(true);
+      const currentPoints = Number(values[rowIndex + 1][indexes.points] || 0);
+      sheet.getRange(absoluteRow, indexes.points + 1).setValue(currentPoints + bonus);
+      SpreadsheetApp.flush();
+    }
+
+    const routes = readObjects_(sheet);
+    const route = routes.find(function (item) {
+      return String(item.route_id) === routeId;
+    });
+    const now = new Date();
+    const timezone = spreadsheet.getSpreadsheetTimeZone() || Session.getScriptTimeZone();
+    const globalRanking = buildRanking_(routes, {
+      period: "month",
+      cityId: "",
+      museumId: "",
+      playerId: playerId,
+      timezone: timezone,
+      now: now,
+    });
+    const cityRanking = buildRanking_(routes, {
+      period: "month",
+      cityId: String(route.city_id),
+      museumId: "",
+      playerId: playerId,
+      timezone: timezone,
+      now: now,
+    });
+    const museumRanking = buildRanking_(routes, {
+      period: "month",
+      cityId: String(route.city_id),
+      museumId: String(route.museum_id),
+      playerId: playerId,
+      timezone: timezone,
+      now: now,
+    });
+    const totalPoints = routes
+      .filter(function (item) {
+        return String(item.player_id) === playerId;
+      })
+      .reduce(function (sum, item) {
+        return sum + Number(item.points || 0);
+      }, 0);
+
+    return {
+      routeId: routeId,
+      bonusType: bonusType,
+      bonusAwarded: alreadyAwarded ? 0 : bonus,
+      bonusValue: bonus,
+      pointsEarned: Number(route.points || 0),
+      totalPoints: totalPoints,
+      globalRank: globalRanking.currentPlayer ? globalRanking.currentPlayer.rank : null,
+      cityRank: cityRanking.currentPlayer ? cityRanking.currentPlayer.rank : null,
+      museumRank: museumRanking.currentPlayer ? museumRanking.currentPlayer.rank : null,
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function ensureLocation_(spreadsheet, cityName, museumName) {
+  const citySheet = spreadsheet.getSheetByName(SHEETS.CITIES);
+  const museumSheet = spreadsheet.getSheetByName(SHEETS.MUSEUMS);
+  const cities = readObjects_(citySheet);
+  const museums = readObjects_(museumSheet);
+  const normalizedCity = normalizeLocation_(cityName);
+  const normalizedMuseum = normalizeLocation_(museumName);
+
+  let city = cities.find(function (item) {
+    return normalizeLocation_(item.city_ru) === normalizedCity || normalizeLocation_(item.city_en) === normalizedCity;
+  });
+  if (!city) {
+    city = {
+      city_id: locationId_("city", normalizedCity),
+      city_ru: cityName,
+      city_en: cityName,
+    };
+    citySheet.appendRow([city.city_id, cityName, cityName, "", true]);
+  }
+
+  let museum = museums.find(function (item) {
+    return (
+      String(item.city_id) === String(city.city_id) &&
+      (normalizeLocation_(item.museum_ru) === normalizedMuseum ||
+        normalizeLocation_(item.museum_en) === normalizedMuseum)
+    );
+  });
+  if (!museum) {
+    museum = {
+      museum_id: locationId_("museum", String(city.city_id) + "|" + normalizedMuseum),
+      city_id: city.city_id,
+      museum_ru: museumName,
+      museum_en: museumName,
+    };
+    museumSheet.appendRow([museum.museum_id, city.city_id, museumName, museumName, true]);
+  }
+
+  return { cityId: String(city.city_id), museumId: String(museum.museum_id) };
 }
 
 function getLocations_() {
@@ -294,8 +450,6 @@ function getLeaderboard_(filters) {
   if (filters.period !== "month" && filters.period !== "all") {
     throw new Error("INVALID_PERIOD");
   }
-  if (!filters.cityId && !filters.museumId) throw new Error("LOCATION_REQUIRED");
-
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   const routes = readObjects_(spreadsheet.getSheetByName(SHEETS.ROUTES));
 
@@ -358,7 +512,7 @@ function buildRanking_(routes, filters) {
     cityId: filters.cityId || null,
     museumId: filters.museumId || null,
     updatedAt: new Date().toISOString(),
-    entries: ranked.slice(0, MAX_LEADERBOARD_ROWS),
+    entries: ranked,
     currentPlayer: currentPlayer,
   };
 }
@@ -418,6 +572,37 @@ function cleanNickname_(value) {
   if (nickname.length < 2 || nickname.length > 24) throw new Error("INVALID_NICKNAME");
   if (!/^[\p{L}\p{N} _.-]+$/u.test(nickname)) throw new Error("INVALID_NICKNAME");
   return nickname;
+}
+
+function cleanLocationName_(value, fieldName) {
+  const name = String(value || "").trim().replace(/\s+/g, " ");
+  if (name.length < 2 || name.length > 80) throw new Error("INVALID_" + fieldName.toUpperCase());
+  return name;
+}
+
+function clampCount_(value, maximum) {
+  const count = Math.floor(Number(value));
+  if (!Number.isFinite(count) || count < 0) return 0;
+  return Math.min(count, maximum);
+}
+
+function normalizeLocation_(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function locationId_(prefix, value) {
+  const digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    value,
+    Utilities.Charset.UTF_8,
+  );
+  const hex = digest
+    .map(function (byte) {
+      const normalized = byte < 0 ? byte + 256 : byte;
+      return ("0" + normalized.toString(16)).slice(-2);
+    })
+    .join("");
+  return prefix + "_" + hex.slice(0, 16);
 }
 
 function normalizeDate_(value, timezone) {
