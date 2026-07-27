@@ -165,20 +165,20 @@ const modeCue: Record<PlayerMode, { ru: string; en: string }> = {
 
 const modeDetails: Record<PlayerMode, { ru: { title: string; steps: string[] }; en: { title: string; steps: string[] } }> = {
   solo: {
-    ru: { title: "Как проходит соло-игра", steps: ["Самостоятельно выбирайте произведения.", "Выполняйте задания в своём темпе.", "Сохраняйте наблюдения и открытия."] },
-    en: { title: "How Solo works", steps: ["Choose the artworks yourself.", "Respond at your own pace.", "Save your personal discoveries."] },
+    ru: { title: "Как проходит соло-игра", steps: ["В первом этапе вытяните карту и найдите подходящее произведение.", "Выполняйте следующие задания у этой же работы в своём темпе.", "Меняйте произведение, только если этого требует карта или вам хочется продолжить путь."] },
+    en: { title: "How Solo works", steps: ["Draw a card in the first stage and find a matching artwork.", "Complete the following tasks with the same artwork at your own pace.", "Change the artwork only when a card asks you to or when you want to move on."] },
   },
   together: {
-    ru: { title: "Как проходит игра вместе", steps: ["На каждом этапе новый участник выбирает произведение.", "Сначала каждый даёт свой ответ, не подсказывая другим.", "Затем сравните ответы и сформулируйте один общий вариант."] },
-    en: { title: "How Together works", steps: ["A new player chooses the artwork at each stage.", "Everyone forms an answer without influencing the others.", "Compare your answers and create one shared response."] },
+    ru: { title: "Как проходит игра вместе", steps: ["В первом этапе вытяните карту и найдите подходящее произведение.", "На каждом следующем этапе новый участник вытягивает карту для этой же работы.", "Сначала каждый обдумывает свой ответ, затем сравните версии и сформулируйте один общий вариант. Меняйте произведение, только если этого требует задание или вам самим хочется продолжить путь."] },
+    en: { title: "How Together works", steps: ["Draw a card in the first stage and find a matching artwork.", "At each following stage, a new player draws a card for the same artwork.", "Everyone thinks separately, then compares ideas and creates one shared answer. Change the artwork only when a card asks you to or when you want to move on."] },
   },
   family: {
-    ru: { title: "Подходит для одного или нескольких взрослых и детей", steps: ["Ребёнок вытягивает карту, выбирает произведение и отвечает первым.", "Взрослые помогают уточняющими вопросами и предлагают свои версии, не исправляя ответ ребёнка.", "Ребёнок выбирает понравившийся вариант или соединяет несколько идей в одну."] },
-    en: { title: "Scenario: two adults and a child", steps: ["The child draws a card, chooses the artwork and answers first.", "One adult helps with a question; the other offers a version without correcting the child.", "The child chooses the best answer or combines all versions."] },
+    ru: { title: "Подходит для одного или нескольких взрослых и детей", steps: ["В первом этапе ребёнок вытягивает карту и находит подходящее произведение.", "На следующих этапах ребёнок вытягивает новую карту для этой же работы и отвечает первым.", "Взрослые помогают вопросами, не исправляя ребёнка. Меняйте произведение, только если этого требует задание или ребёнок захочет выбрать другое."] },
+    en: { title: "For one or more adults and children", steps: ["In the first stage, the child draws a card and finds a matching artwork.", "In the following stages, the child draws a new card for the same artwork and answers first.", "Adults help with questions without correcting the child. Change the artwork only when a card asks you to or the child wants another one."] },
   },
   group: {
-    ru: { title: "Сценарий: группа от четырёх человек", steps: ["На каждом этапе новый ведущий читает задание и выбирает произведение.", "Остальные делятся на команды по 2–3 человека и готовят по одному ответу.", "Команды представляют ответы, а все участники голосуют за наиболее интересный ответ. За свой вариант голосовать нельзя."] },
-    en: { title: "Scenario: a group of four or more", steps: ["A new host reads the task and chooses the artwork at each stage.", "Everyone else splits into teams of 2–3 and prepares one answer per team.", "Teams present; the group votes. No voting for your own answer."] },
+    ru: { title: "Сценарий: группа от четырёх человек", steps: ["В первом этапе ведущий вытягивает карту, а группа находит подходящее произведение.", "На каждом следующем этапе новый ведущий вытягивает и читает карту для этой же работы.", "Команды по 2–3 человека готовят ответы и голосуют. Меняйте произведение, только если этого требует задание или группа решит двигаться дальше."] },
+    en: { title: "Scenario: a group of four or more", steps: ["In the first stage, the host draws a card and the group finds a matching artwork.", "At each following stage, a new host draws and reads a card for the same artwork.", "Teams of 2–3 prepare answers and vote. Change the artwork only when a card asks you to or the group wants to move on."] },
   },
 };
 
@@ -275,7 +275,7 @@ export default function Home() {
   const [museums, setMuseums] = useState<Museum[]>([]);
   const [cityId, setCityId] = useState("");
   const [museumId, setMuseumId] = useState("");
-  const [locationsStatus, setLocationsStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [locationsStatus, setLocationsStatus] = useState<"loading" | "ready" | "empty" | "unavailable">("loading");
   const [rankingResult, setRankingResult] = useState<RankingResult | null>(null);
   const [resultStatus, setResultStatus] = useState<"idle" | "sending" | "saved" | "local" | "duplicate">("idle");
   const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
@@ -313,7 +313,9 @@ export default function Home() {
     : (language === "ru" ? "Музейный исследователь" : "Museum Explorer");
 
   useEffect(() => {
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    }
     const standalone = window.matchMedia("(display-mode: standalone)").matches ||
       Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -358,7 +360,7 @@ export default function Home() {
       .then((data: { cities?: City[]; museums?: Museum[] }) => {
         setCities(data.cities || []);
         setMuseums(data.museums || []);
-        setLocationsStatus(data.cities?.length && data.museums?.length ? "ready" : "unavailable");
+        setLocationsStatus(data.cities?.length && data.museums?.length ? "ready" : "empty");
       })
       .catch(() => setLocationsStatus("unavailable"));
 
@@ -728,6 +730,7 @@ export default function Home() {
               <span className="hero-star">✦</span>
             </div>
             <p className="eyebrow">{t.gameName} · {language === "ru" ? "игра для музея" : "a game for art museums"}</p>
+            <p className="author-credit">{language === "ru" ? "Автор игры — Наталья Спиридонова" : "Created by Natalia Spiridonova"}</p>
             <h1>{t.tagline}</h1>
             <p className="lead">{t.intro}</p>
             <div className="round-ribbon" aria-label={language === "ru" ? "Пять категорий игры" : "Five game categories"}>
@@ -825,6 +828,8 @@ export default function Home() {
                     </label>
                   )}
                   {locationsStatus === "unavailable" && <p className="connection-note">{language === "ru" ? "Онлайн-рейтинг пока не подключён. Приз и баллы за маршрут всё равно сохранятся на экране." : "The online leaderboard is not connected yet. You will still receive a prize and route points."}</p>}
+                  {locationsStatus === "empty" && <p className="connection-note">{language === "ru" ? "Рейтинг подключён, но список городов и музеев пока не заполнен. Приз и баллы за маршрут всё равно появятся на финише." : "The leaderboard is connected, but its city and museum lists are still empty. You will still receive a prize and route points."}</p>}
+                  <p className="author-note"><span>НС</span><span><strong>{language === "ru" ? "Совет от Натальи" : "A note from Natalia"}</strong>{language === "ru" ? " Не спешите увидеть весь музей. Одного произведения достаточно, чтобы начать настоящее путешествие." : " Do not rush to see the whole museum. One artwork is enough to begin a real adventure."}</span></p>
                 </section>
                 <button className="primary-button bottom-button" onClick={startAdventure}>{t.begin}<span>→</span></button>
               </>
@@ -846,19 +851,20 @@ export default function Home() {
                 <p>{currentRound.instruction[language]}</p>
                 {playerMode === "together" && (
                   <p className="scenario-cue">{language === "ru"
-                    ? `Ведущий этапа: ${currentRoundIndex === 0 ? "выберите первого участника" : "передайте роль следующему участнику"}. Он выбирает произведение, у которого вы будете выполнять задание.`
-                    : `Stage leader: ${currentRoundIndex === 0 ? "choose the first player" : "pass the role to the next player"}. They choose the artwork for this task.`}</p>
+                    ? `Карту вытягивает ${currentRoundIndex === 0 ? "первый участник" : "следующий участник"}. Выполните её у выбранной работы; новое произведение ищите, только если этого требует задание.`
+                    : `The ${currentRoundIndex === 0 ? "first player" : "next player"} draws the card. Complete it with your chosen artwork; find another only when the task asks you to.`}</p>
                 )}
                 {playerMode === "family" && (
                   <p className="scenario-cue">{language === "ru"
-                    ? "Главный исследователь — ребёнок: он вытягивает карту и выбирает произведение. Взрослые пока не подсказывают."
-                    : "The child is the lead explorer: they draw the card and choose the artwork. Adults do not give hints yet."}</p>
+                    ? `Главный исследователь — ребёнок: он вытягивает карту${currentRoundIndex === 0 ? " и находит подходящую работу" : " для выбранной работы"}. Взрослые пока не подсказывают.`
+                    : `The child is the lead explorer: they draw the card${currentRoundIndex === 0 ? " and find a matching artwork" : " for the chosen artwork"}. Adults do not give hints yet.`}</p>
                 )}
                 {playerMode === "group" && (
                   <p className="scenario-cue">{language === "ru"
-                    ? `Ведущий этапа: ${currentRoundIndex === 0 ? "выберите первого участника" : "передайте телефон следующему"}. Остальные делятся на команды по 2–3 человека.`
-                    : `Stage host: ${currentRoundIndex === 0 ? "choose the first player" : "pass the phone to the next player"}. Everyone else splits into teams of 2–3.`}</p>
+                    ? `${currentRoundIndex === 0 ? "Первый ведущий" : "Новый ведущий"} вытягивает и читает карту. Остальные делятся на команды по 2–3 человека и выполняют её у выбранной работы.`
+                    : `The ${currentRoundIndex === 0 ? "first host" : "new host"} draws and reads the card. Everyone else splits into teams of 2–3 and completes it with the chosen artwork.`}</p>
                 )}
+                <p className="creator-whisper">{language === "ru" ? "От Натальи: оставайтесь у той же работы, пока сама карта не предложит найти другую." : "From Natalia: stay with the same artwork until a card asks you to find another one."}</p>
                 <div className="card-deck" aria-label={t.draw}>
                   {currentDeck.map((cardItem, index) => (
                     <button key={cardItem.id} onClick={() => chooseCard(index)} aria-label={`${t.draw} ${index + 1}`}>
@@ -946,6 +952,7 @@ export default function Home() {
               <button className="share-button" disabled={isCreatingPassport} onClick={shareAdventure}>↗ {t.share}</button>
               <button className="text-button" onClick={resetAdventure}>{t.again}</button>
             </div>
+            <p className="author-thanks">{language === "ru" ? "Спасибо, что отправились в это приключение вместе со мной. До встречи в следующем музее! — Наталья" : "Thank you for taking this adventure with me. See you at the next museum! — Natalia"}</p>
             <button className={`home-tip ${isStandalone ? "installed" : ""}`} onClick={installApp}><span className="brand-mark">{isStandalone ? "✓" : "MA"}</span><div><strong>{isStandalone ? (language === "ru" ? "Приложение установлено" : "App installed") : t.addHome}</strong><p>{isStandalone ? (language === "ru" ? "Museum Adventure открывается как обычное приложение." : "Museum Adventure now opens like a regular app.") : t.homeHint}</p></div><b>›</b></button>
             {installHelpOpen && !isStandalone && (
               <div className="install-help summary-install-help">
@@ -1017,7 +1024,7 @@ export default function Home() {
                 )}
               </>
             ) : (
-              <div className="leaderboard-message"><span>🏆</span><strong>{language === "ru" ? "Рейтинг ещё подключается" : "Leaderboard is being connected"}</strong><p>{language === "ru" ? "После подключения Google-таблицы здесь появятся города, музеи и места игроков." : "Cities, museums and player ranks will appear here after Google Sheets is connected."}</p></div>
+              <div className="leaderboard-message"><span>🏆</span><strong>{locationsStatus === "empty" ? (language === "ru" ? "Список мест пока пуст" : "The location list is empty") : (language === "ru" ? "Рейтинг временно недоступен" : "Leaderboard temporarily unavailable")}</strong><p>{locationsStatus === "empty" ? (language === "ru" ? "Связь с рейтингом работает. Города и музеи появятся здесь, когда их добавят в таблицу." : "The leaderboard connection works. Cities and museums will appear after they are added to the spreadsheet.") : (language === "ru" ? "Не удалось получить данные. Попробуйте ещё раз позже." : "The data could not be loaded. Please try again later.")}</p></div>
             )}
           </div>
         )}
