@@ -201,6 +201,19 @@ h2 { font-size: 38px; line-height: 1.08; }
 .memory-panel textarea:focus { border-color: var(--navy); box-shadow: 0 0 0 4px rgba(23,63,103,.09); }
 .character-count { position: absolute; right: 11px; bottom: 10px; color: #555b57; font-size: 12px; }
 .mission-actions { display: grid; gap: 10px; margin-top: 19px; }
+.skip-timer-button {
+  width: 100%;
+  min-height: 62px;
+  padding: 11px 16px;
+  border: 2px solid rgba(104,74,31,.32);
+  border-radius: 16px;
+  color: #684a1f;
+  background: #fffaf0;
+  font-size: 15px;
+  font-weight: 850;
+  cursor: pointer;
+}
+.skip-timer-button small { display: block; margin-top: 4px; color: #765f40; font-size: 12px; font-weight: 650; }
 .secondary-button { min-height: 50px; padding: 11px 15px; color: var(--navy); background: rgba(255,255,255,.5); font-size: 15px; }
 .game-screen .primary-button { background: var(--round-color); box-shadow: 0 10px 22px color-mix(in srgb, var(--round-color) 20%, transparent); }
 
