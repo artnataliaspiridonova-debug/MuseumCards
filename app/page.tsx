@@ -319,8 +319,8 @@ export default function Home() {
     .filter((cardItem): cardItem is AdventureCard => Boolean(cardItem));
   const filteredMuseums = museums.filter((museum) => museum.cityId === cityId);
   const qualifiedCount = memories.filter((memory) => memory.qualified).length;
-  const answerCount = memories.filter((memory) => memory.note.trim()).length;
-  const photoCount = memories.filter((memory) => memory.photo).length;
+  const answerCount = memories.filter((memory) => memory.qualified && memory.note.trim()).length;
+  const photoCount = memories.filter((memory) => memory.qualified && memory.photo).length;
   const localPoints = qualifiedCount * 10 + answerCount * 5 + photoCount * 10;
   const awardedPoints = rankingResult?.pointsEarned ?? localPoints;
   const elapsedSeconds = selectedCard ? cardElapsedSeconds : 0;
@@ -566,8 +566,9 @@ export default function Home() {
     setPhoto(await compressPhoto(file));
   }
 
-  function completeRound() {
-    if (!selectedCard || secondsRemaining > 0) return;
+  function completeRound(skipTimer = false) {
+    if (!selectedCard || (secondsRemaining > 0 && !skipTimer)) return;
+    const qualified = !skipTimer && elapsedSeconds >= MIN_CARD_SECONDS;
     const nextMemories = [
       ...memories.filter((item) => item.roundId !== currentRoundId),
       {
@@ -576,7 +577,7 @@ export default function Home() {
         note: note.trim(),
         photo,
         elapsedSeconds,
-        qualified: elapsedSeconds >= MIN_CARD_SECONDS,
+        qualified,
       },
     ];
     setMemories(nextMemories);
@@ -833,7 +834,7 @@ export default function Home() {
               <span className="hero-star">✦</span>
             </div>
             <p className="eyebrow">{t.gameName} · {language === "ru" ? "игра для музея" : "a game for art museums"}</p>
-            <p className="author-credit">{language === "ru" ? "Автор игры — Наталья Спиридонова" : "Created by Natalia Spiridonova"}</p>
+            <p className="author-credit">{language === "ru" ? "Игра создана культурологом и исследователем Натальей Спиридоновой" : "Created by cultural researcher Natalia Spiridonova"}</p>
             <h1>{t.tagline}</h1>
             <p className="lead">{t.intro}</p>
             <div className="round-ribbon" aria-label={language === "ru" ? "Пять категорий игры" : "Five game categories"}>
@@ -920,7 +921,7 @@ export default function Home() {
                   <datalist id="city-options">{cities.map((city) => <option key={city.id} value={city[language]} />)}</datalist>
                   <datalist id="museum-options">{(cityId ? filteredMuseums : museums).map((museum) => <option key={museum.id} value={museum[language]} />)}</datalist>
                   <p className="connection-note">{language === "ru" ? "Имя, город и музей обязательны только для рейтинга. Если места ещё нет в списке, просто напишите его — оно добавится автоматически." : "Name, city and museum are only required for the leaderboard. New places are added automatically."}</p>
-                  <p className="author-note"><span>НС</span><span><strong>{language === "ru" ? "Совет от Натальи" : "A note from Natalia"}</strong>{language === "ru" ? " Не спешите увидеть весь музей. Одного произведения достаточно, чтобы начать настоящее путешествие." : " Do not rush to see the whole museum. One artwork is enough to begin a real adventure."}</span></p>
+                  <p className="author-note"><span>НС</span><span><strong>{language === "ru" ? "Наталья Спиридонова · культуролог и исследователь" : "Natalia Spiridonova · cultural researcher"}</strong>{language === "ru" ? " Не спешите увидеть весь музей. Одного произведения достаточно, чтобы начать настоящее путешествие." : " Do not rush to see the whole museum. One artwork is enough to begin a real adventure."}</span></p>
                 </section>
                 <button className="primary-button bottom-button" onClick={startAdventure}>{t.begin}<span>→</span></button>
               </>
@@ -1003,7 +1004,15 @@ export default function Home() {
                 )}
                 <div className="mission-actions">
                   <button className="secondary-button" onClick={chooseAnotherCard}>↻ {t.another}</button>
-                  <button className="primary-button" disabled={secondsRemaining > 0} onClick={completeRound}>{secondsRemaining > 0 ? (language === "ru" ? "Продолжить после таймера" : "Continue after timer") : (currentRoundIndex === selectedRounds.length - 1 ? t.finish : t.done)}<span>→</span></button>
+                  {secondsRemaining > 0 && (
+                    <button className="skip-timer-button" onClick={() => completeRound(true)}>
+                      {currentRoundIndex === selectedRounds.length - 1
+                        ? (language === "ru" ? "Пропустить таймер и завершить" : "Skip timer and finish")
+                        : (language === "ru" ? "Пропустить таймер и продолжить" : "Skip timer and continue")}
+                      <small>{language === "ru" ? "За эту карту будет начислено 0 баллов" : "This card will earn 0 points"}</small>
+                    </button>
+                  )}
+                  <button className="primary-button" disabled={secondsRemaining > 0} onClick={() => completeRound(false)}>{secondsRemaining > 0 ? (language === "ru" ? "Продолжить после таймера" : "Continue after timer") : (currentRoundIndex === selectedRounds.length - 1 ? t.finish : t.done)}<span>→</span></button>
                 </div>
               </div>
             )}
@@ -1065,7 +1074,7 @@ export default function Home() {
               <button className="share-button" disabled={isCreatingPassport} onClick={shareAdventure}>↗ {t.share}</button>
               <button className="text-button" onClick={resetAdventure}>{t.again}</button>
             </div>
-            <p className="author-thanks">{language === "ru" ? "Спасибо, что отправились в это приключение вместе со мной. До встречи в следующем музее! — Наталья" : "Thank you for taking this adventure with me. See you at the next museum! — Natalia"}</p>
+            <p className="author-thanks">{language === "ru" ? "Спасибо, что отправились в это приключение вместе со мной. До встречи в следующем музее! — Наталья Спиридонова, культуролог и исследователь" : "Thank you for taking this adventure with me. See you at the next museum! — Natalia Spiridonova, cultural researcher"}</p>
             <button className={`home-tip ${isStandalone ? "installed" : ""}`} onClick={installApp}><span className="brand-mark">{isStandalone ? "✓" : "MA"}</span><div><strong>{isStandalone ? (language === "ru" ? "Приложение установлено" : "App installed") : t.addHome}</strong><p>{isStandalone ? (language === "ru" ? "Museum Adventure открывается как обычное приложение." : "Museum Adventure now opens like a regular app.") : t.homeHint}</p></div><b>›</b></button>
             {installHelpOpen && !isStandalone && (
               <div className="install-help summary-install-help">
