@@ -91,7 +91,7 @@ const ui = {
     begin: "Начать маршрут",
     draw: "Вытяните карту",
     of: "из",
-    tinyMission: "Подсказка",
+    tinyMission: "Как выполнить",
     memory: "Сохранить впечатление",
     memoryHint: "Этот шаг необязателен. Его можно пропустить и продолжить игру.",
     addPhoto: "Добавить фото",
@@ -128,7 +128,7 @@ const ui = {
     begin: "Enter the museum",
     draw: "Choose a hidden card",
     of: "of",
-    tinyMission: "Tiny mission",
+    tinyMission: "How to do it",
     memory: "Save this moment",
     memoryHint: "This is optional—you can simply continue the game.",
     addPhoto: "Add a photo",
@@ -500,7 +500,7 @@ export default function Home() {
   );
 
   function startAdventure() {
-    setSelectedRounds(duration === "quick" ? ["find", "imagine", "challenge"] : rounds.map((round) => round.id));
+    setSelectedRounds(duration === "quick" ? ["find", "observe", "challenge"] : rounds.map((round) => round.id));
     setDeckOrders(createDeckOrders());
     setCurrentRoundIndex(0);
     setMemories([]);
@@ -941,6 +941,15 @@ export default function Home() {
                 <div className="round-heading"><span>{currentRound.icon}</span><p>{currentRound.label[language]}</p></div>
                 <h2>{t.draw}</h2>
                 <p>{currentRound.instruction[language]}</p>
+                {currentRoundIndex === 0 && (
+                  <section className="game-start-guide">
+                    <strong>{language === "ru" ? "Перед началом маршрута" : "Before you begin"}</strong>
+                    <p>{language === "ru"
+                      ? "На первом этапе карта поможет выбрать произведение. В следующих этапах оставайтесь у этой же работы, пока задание прямо не предложит найти другую. К каждой карте есть короткое уточнение — оно помогает начать, но не задаёт правильного ответа."
+                      : "In the first stage, a card helps you choose an artwork. Stay with the same work in the following stages unless a task explicitly asks you to find another. Each card includes a short way to begin, but there is no single correct answer."}</p>
+                    <p>{modeCue[playerMode][language]}</p>
+                  </section>
+                )}
                 {playerMode === "together" && (
                   <p className="scenario-cue">{language === "ru"
                     ? `Карту вытягивает ${currentRoundIndex === 0 ? "первый участник" : "следующий участник"}. Выполните её у выбранной работы; новое произведение ищите, только если этого требует задание.`
@@ -956,7 +965,6 @@ export default function Home() {
                     ? `${currentRoundIndex === 0 ? "Первый ведущий" : "Новый ведущий"} вытягивает и читает карту. Остальные делятся на команды по 2–3 человека и выполняют её у выбранной работы.`
                     : `The ${currentRoundIndex === 0 ? "first host" : "new host"} draws and reads the card. Everyone else splits into teams of 2–3 and completes it with the chosen artwork.`}</p>
                 )}
-                <p className="creator-whisper">{language === "ru" ? "От Натальи: оставайтесь у той же работы, пока сама карта не предложит найти другую." : "From Natalia: stay with the same artwork until a card asks you to find another one."}</p>
                 <div className="card-deck" aria-label={t.draw}>
                   {currentDeck.map((cardItem, index) => (
                     <button key={cardItem.id} onClick={() => chooseCard(index)} aria-label={`${t.draw} ${index + 1}`}>
@@ -964,7 +972,7 @@ export default function Home() {
                     </button>
                   ))}
                 </div>
-                <p className="deck-hint">{language === "ru" ? "Доверьтесь случаю: все задания подходят для любого художественного музея." : "Trust chance—every card works in any art museum."}</p>
+                {currentRoundIndex === 0 && <p className="deck-hint">{language === "ru" ? "Доверьтесь случаю: все задания подходят для любого художественного музея." : "Trust chance—every card works in any art museum."}</p>}
               </div>
             ) : (
               <div className="mission-screen">
@@ -972,7 +980,6 @@ export default function Home() {
                   <div className="mission-card-top"><span className="mission-icon">{currentRound.icon}</span><span>{currentRound.label[language]}</span><small>{selectedCard.id.split("-")[1].padStart(2, "0")} / 10</small></div>
                   <h2>{selectedCard.prompt[language]}</h2>
                   <div className="tiny-mission"><span>✦</span><div><small>{t.tinyMission}</small><p>{selectedCard.mission[language]}</p></div></div>
-                  <p className="mode-cue">{modeCue[playerMode][language]}</p>
                 </article>
                 <div className={`card-timer ${secondsRemaining === 0 ? "ready" : ""}`}>
                   <div>
