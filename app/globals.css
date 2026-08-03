@@ -149,15 +149,17 @@ h2 { font-size: 38px; line-height: 1.08; }
 .card-deck { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 30px 0 26px; perspective: 800px; }
 .card-deck button { aspect-ratio: .74; position: relative; overflow: hidden; border: 0; border-radius: 17px; color: white; background: linear-gradient(145deg, color-mix(in srgb, var(--round-color) 78%, white), var(--round-color)); box-shadow: 0 12px 22px color-mix(in srgb, var(--round-color) 28%, transparent); cursor: pointer; transition: transform .18s ease, box-shadow .18s ease; }
 .card-deck button::before { content: ""; position: absolute; inset: 7px; z-index: 0; border: 2px solid rgba(255,255,255,.58); border-radius: 12px; background: repeating-radial-gradient(circle at 50% 44%, transparent 0 13px, rgba(255,255,255,.12) 14px 15px); }
-.card-deck button::after { content: "✦"; position: absolute; top: 13px; right: 14px; color: rgba(255,255,255,.46); font-size: 16px; }
 .card-deck button:nth-child(3n + 1) { transform: rotate(-1deg); }
 .card-deck button:nth-child(3n + 3) { transform: rotate(1deg); }
 .card-deck button:hover { transform: translateY(-7px) rotate(0); box-shadow: 0 18px 30px color-mix(in srgb, var(--round-color) 36%, transparent); }
-.card-deck button span { width: 48px; height: 48px; position: relative; z-index: 1; display: grid; place-items: center; margin: auto; border: 2px solid rgba(255,255,255,.7); border-radius: 50%; background: rgba(255,255,255,.14); font-family: Georgia, serif; font-size: 25px; }
+.card-deck button span { width: 54px; height: 54px; position: relative; z-index: 1; display: grid; place-items: center; margin: auto; border: 2px solid rgba(255,255,255,.7); border-radius: 50%; background: rgba(255,255,255,.14); font-family: Georgia, serif; font-size: 30px; }
 .card-deck button small { position: absolute; z-index: 1; bottom: 14px; left: 0; right: 0; color: white; font-size: 13px; font-weight: 900; letter-spacing: .08em; }
 .card-deck button:last-child { grid-column: 2; }
 .deck-hint { padding: 14px 16px; border-radius: 14px; color: #454a47 !important; background: rgba(255,255,255,.62); font-family: var(--font-geist-sans), Arial, sans-serif !important; font-size: 14px !important; line-height: 1.45 !important; }
 .deck-screen > .scenario-cue { padding: 15px 17px; border: 2px solid color-mix(in srgb, var(--round-color) 30%, transparent); border-radius: 15px; color: var(--round-color); background: color-mix(in srgb, var(--round-color) 8%, white); font-family: var(--font-geist-sans), Arial, sans-serif; font-size: 15px; font-weight: 650; line-height: 1.5; }
+.game-start-guide { max-width: 390px; margin: 18px auto 0; padding: 17px; border: 2px solid color-mix(in srgb, var(--round-color) 28%, transparent); border-radius: 16px; color: #30434a; background: rgba(255,255,255,.7); text-align: left; }
+.game-start-guide strong { color: var(--round-color); font-size: 16px; }
+.game-start-guide p { margin: 8px 0 0; font-size: 15px; line-height: 1.5; }
 
 .mission-card { position: relative; overflow: hidden; border: 3px solid var(--round-color); border-radius: 27px; padding: 27px 25px 24px; background: linear-gradient(150deg, #fffdf8 0%, color-mix(in srgb, var(--round-color) 11%, #fffdf8) 100%); box-shadow: 0 18px 42px color-mix(in srgb, var(--round-color) 22%, transparent); }
 .mission-card::before { content: "✦"; position: absolute; top: 36px; right: -12px; color: color-mix(in srgb, var(--round-color) 13%, transparent); font-size: 120px; line-height: 1; transform: rotate(12deg); pointer-events: none; }
@@ -182,7 +184,6 @@ h2 { font-size: 38px; line-height: 1.08; }
 .tiny-mission > span { color: var(--round-color); font-size: 21px; }
 .tiny-mission small { color: var(--round-color); font-size: 12px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
 .tiny-mission p { margin: 6px 0 0; color: #26343a; font-family: Georgia, serif; font-size: 17px; line-height: 1.45; }
-.mode-cue { position: relative; z-index: 1; margin: 17px 0 0; padding: 13px 14px; border-radius: 12px; color: #30434a; background: rgba(255,255,255,.6); font-size: 15px; font-weight: 600; line-height: 1.5; }
 .memory-toggle { width: 100%; display: grid; grid-template-columns: 46px 1fr auto; align-items: center; gap: 12px; margin-top: 18px; padding: 15px 17px; border: 2px solid rgba(23,63,103,.2); border-radius: 17px; text-align: left; background: #fffdf8; box-shadow: 0 8px 20px rgba(34,46,55,.06); cursor: pointer; }
 .memory-plus { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; color: white; background: var(--navy); font-size: 27px; }
 .memory-toggle strong, .memory-toggle small { display: block; }
@@ -299,7 +300,6 @@ h2 { font-size: 38px; line-height: 1.08; }
 .author-note { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 13px; border-radius: 13px; color: #4e4537; background: #f3eadc; font-family: Georgia, serif; font-size: 14px; line-height: 1.45; }
 .author-note > span:first-child { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid #9b7440; border-radius: 50%; color: #795424; font-family: Arial, sans-serif; font-size: 11px; font-weight: 900; }
 .author-note strong { display: block; margin-bottom: 2px; color: #795424; font-family: Arial, sans-serif; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
-.creator-whisper { max-width: 380px; margin: 13px auto 0 !important; padding: 11px 13px; border-radius: 12px; color: #5f4d36 !important; background: #f3eadc; font-family: Georgia, serif !important; font-size: 14px !important; line-height: 1.45 !important; }
 .author-thanks { margin: 24px 0 0; padding: 17px 16px; border-radius: 15px; color: #5f4d36; background: #f3eadc; font-family: Georgia, serif; font-size: 15px; font-style: italic; line-height: 1.5; text-align: left; }
 
 .prize-card { position: relative; overflow: hidden; margin: 5px 0 22px; padding: 24px 20px 20px; border: 2px solid #c99418; border-radius: 24px; background: linear-gradient(145deg, #fff9db 0%, #f6dfa0 100%); box-shadow: 0 15px 30px rgba(142,100,12,.15); }
