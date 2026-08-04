@@ -64,9 +64,31 @@ button { color: inherit; }
 
 .brand { display: flex; align-items: center; gap: 10px; border: 0; background: transparent; padding: 0; cursor: pointer; font-size: 15px; font-weight: 800; letter-spacing: .01em; }
 .brand-mark { width: 38px; height: 38px; display: grid; place-items: center; border: 2px solid var(--navy); border-radius: 50%; color: var(--navy); font-family: Georgia, serif; font-size: 12px; font-weight: 800; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
 .language-switch { display: flex; padding: 3px; border-radius: 999px; background: rgba(23, 63, 103, .08); }
 .language-switch button { min-width: 42px; min-height: 34px; border: 0; padding: 7px 11px; border-radius: 999px; background: transparent; cursor: pointer; font-size: 13px; font-weight: 850; letter-spacing: .05em; opacity: .58; }
 .language-switch button.active { color: white; background: var(--navy); opacity: 1; }
+
+.auth-shell {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 38px 18px;
+  background:
+    radial-gradient(circle at 88% 5%, rgba(110, 161, 164, .24), transparent 27%),
+    radial-gradient(circle at 6% 95%, rgba(224, 159, 69, .22), transparent 25%),
+    var(--paper);
+  text-align: center;
+}
+.auth-intro { max-width: 440px; }
+.auth-intro > p:first-of-type { margin: 14px 0 12px; color: var(--navy); font-size: 13px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.auth-intro h1 { font-size: clamp(35px, 9vw, 48px); line-height: 1.04; }
+.auth-intro h1 + p { margin: 18px auto 0; color: #454a48; font-family: Georgia, serif; font-size: 18px; line-height: 1.48; }
+.auth-logo { width: 68px; height: 68px; display: grid; place-items: center; margin: 0 auto; border: 3px solid var(--navy); border-radius: 22px; color: white; background: var(--navy); font-family: Georgia, serif; font-size: 21px; font-weight: 900; box-shadow: 0 10px 28px rgba(23, 63, 103, .22); }
+.auth-credit { max-width: 390px; margin: 0; color: #715124; font-size: 13px; font-weight: 750; line-height: 1.45; }
 
 .screen { min-height: calc(100svh - 147px); padding: 34px 28px 32px; animation: screen-in .35s ease both; }
 @keyframes screen-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
