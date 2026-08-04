@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { googleScriptGet } from "@/app/lib/google-leaderboard";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
+  const { userId } = await auth.protect();
   const period = request.nextUrl.searchParams.get("period") === "all" ? "all" : "month";
   const cityId = request.nextUrl.searchParams.get("cityId") || "";
   const museumId = request.nextUrl.searchParams.get("museumId") || "";
-  const playerId = request.nextUrl.searchParams.get("playerId") || "";
 
   try {
     const result = await googleScriptGet({
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
       period,
       cityId,
       museumId,
-      playerId,
+      playerId: userId,
     });
     return NextResponse.json(result, {
       headers: { "Cache-Control": "private, no-store" },

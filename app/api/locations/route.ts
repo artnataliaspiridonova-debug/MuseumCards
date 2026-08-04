@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { googleScriptGet } from "@/app/lib/google-leaderboard";
 
 export const runtime = "nodejs";
 
 export async function GET() {
+  await auth.protect();
+
   try {
     const result = await googleScriptGet({ action: "locations" });
     return NextResponse.json(result, {

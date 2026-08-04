@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { googleScriptPost } from "@/app/lib/google-leaderboard";
 
 export const runtime = "nodejs";
@@ -19,6 +20,7 @@ type ResultRequest = {
 };
 
 export async function POST(request: NextRequest) {
+  const { userId } = await auth.protect();
   let body: ResultRequest;
 
   try {
@@ -29,7 +31,6 @@ export async function POST(request: NextRequest) {
 
   if (body.action === "addBonus") {
     if (
-      typeof body.playerId !== "string" ||
       typeof body.routeId !== "string" ||
       (body.bonusType !== "download" && body.bonusType !== "share")
     ) {
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
     try {
       const result = await googleScriptPost({
         action: "addBonus",
-        playerId: body.playerId,
+        playerId: userId,
         routeId: body.routeId,
         bonusType: body.bonusType,
       });
@@ -50,7 +51,6 @@ export async function POST(request: NextRequest) {
   }
 
   if (
-    typeof body.playerId !== "string" ||
     typeof body.nickname !== "string" ||
     typeof body.cityName !== "string" ||
     typeof body.museumName !== "string" ||
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
   try {
     const result = await googleScriptPost({
       action: "saveResult",
-      playerId: body.playerId,
+      playerId: userId,
       nickname: body.nickname,
       cityName: body.cityName,
       museumName: body.museumName,
